@@ -172,21 +172,24 @@
       }
 
       function updateActiveOnScroll() {
-        if (isClicking) return;
-        let foundIndex = -1;
-        const triggerLine = window.innerHeight * 0.3; 
+  let foundIndex = -1;
+  const triggerLine = window.innerHeight * 0.3;
 
-        sections.forEach((sec, i) => {
-          const rect = sec.getBoundingClientRect();
-          if (rect.top <= triggerLine) foundIndex = i;
-        });
+  sections.forEach((sec, i) => {
+    const rect = sec.getBoundingClientRect();
+    if (rect.top <= triggerLine) foundIndex = i;
+  });
 
-        if (foundIndex === -1 && window.scrollY < 100) foundIndex = 0;
-        if (foundIndex !== -1 && foundIndex !== activeIndex) {
-          activeIndex = foundIndex;
-          if (!isHovering) moveBgTo(activeIndex);
-        }
-      }
+  if (foundIndex === -1 && window.scrollY < 100) foundIndex = 0;
+
+  if (foundIndex !== -1 && foundIndex !== activeIndex) {
+    activeIndex = foundIndex;
+
+    if (!isHovering && !isClicking) {
+      moveBgTo(activeIndex);
+    }
+  }
+}
 
       // Event Listeners dla nawigacji
       navLinks.forEach((link, i) => {
@@ -199,10 +202,14 @@
             isClicking = true;
             activeIndex = i;
             moveBgTo(i);
-            gsap.to(window, { duration: 1.2, scrollTo: targetSec, ease: "power2.inOut", onComplete: () => {
-               // Odblokuj po zakończeniu animacji scrolla
-               setTimeout(() => { isClicking = false; updateActiveOnScroll(); }, 100);
-            }});
+            gsap.to(window, {
+  duration: 1.2,
+  scrollTo: targetSec,
+  ease: "power2.inOut",
+  onComplete: () => {
+    isClicking = false;
+  }
+});
           }
         });
         // Hover
