@@ -239,45 +239,64 @@ function initPortfolioAnimations() {
     const captionWrapper = element.querySelector('.caption-wrapper');
     const orangeBg = element.querySelector('.block-bg-orange');
 
+    // Tworzymy timeline, który mapuje scroll na postęp animacji
     const tl = gsap.timeline({
       scrollTrigger: {
         trigger: element,
-        // Start: gdy góra elementu wejdzie od dołu
-        start: "top bottom", 
-        // End: gdy góra elementu będzie 15% od góry okna (czyli przebyła 85% ekranu)
-        end: "top 15%", 
-        scrub: true, 
-        markers: false // Włącz na true, żeby zobaczyć linie pomocnicze!
+        start: "top 95%", // Zaczynamy, gdy blok wejdzie na ekran od dołu
+        end: "top 5%",   // KOŃCZYMY, gdy góra bloku jest prawie u samej góry (5% od topu)
+        scrub: 1,         // Delikatne wygładzenie (możesz dać true dla natychmiastowej reakcji)
+        markers: false
       }
     });
 
-    // 1. Szerokość: zwiększamy duration do 2.1, aby kończyła się razem z pomarańczowym tłem
-    tl.fromTo(element, { width: "82%" }, { width: "100%", duration: 2.1 }, 0);
+    // 1. SZEROKOŚĆ - Główna animacja (trwa przez cały timeline: od 0 do 1)
+    tl.fromTo(element, 
+      { width: "82%" }, 
+      { width: "100%", ease: "none", duration: 1 }, 
+      0
+    );
 
-    // Reszta animacji
+    // 2. ŚCIEMNIANIE POPRZEDNIEGO BLOKU (dzieje się szybko na początku, trwa 0.4)
     if (prevElement && prevElement.classList.contains('portfolio-block')) {
       const bgElement = prevElement.querySelector('.bg-black');
       if (bgElement) {
-        tl.fromTo(bgElement, { backgroundColor: "rgba(0,0,0,0)" }, { backgroundColor: "rgba(0,0,0,0.75)", duration: 2.1 }, 0);
+        tl.to(bgElement, { 
+          backgroundColor: "rgba(0,0,0,0.85)", 
+          duration: 0.4 
+        }, 0);
       }
     }
 
+    // 3. TEKSTY / CAPTION (pojawiają się w środku przewijania)
     if (captionWrapper) {
-      tl.fromTo(captionWrapper, { filter: "blur(20px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1, duration: 1 }, 0.5);
+      tl.fromTo(captionWrapper, 
+        { filter: "blur(15px)", opacity: 0, y: 30 }, 
+        { filter: "blur(0px)", opacity: 1, y: 0, duration: 0.5 }, 
+        0.3 // startuje w 30% postępu scrolla
+      );
     }
 
+    // 4. POMARAŃCZOWY PASEK (kończy się równo z szerokością bloku w punkcie 1.0)
     if (orangeBg) {
-      // Ta animacja kończy się w punkcie 2.1 (0.9 + 1.2)
-      tl.fromTo(orangeBg, { scaleX: 0, transformOrigin: "center center" }, { scaleX: 1, duration: 1.2 }, 0.9);
+      tl.fromTo(orangeBg, 
+        { scaleX: 0, transformOrigin: "left center" }, 
+        { scaleX: 1, duration: 0.4 }, 
+        0.6 // zaczyna w 60%, kończy w 100% (0.6 + 0.4 = 1.0)
+      );
     }
     
+    // 5. DODATKOWE TEKSTY
     const textElements = element.querySelectorAll('[data-animation="text"]');
     textElements.forEach(textElement => {
-      tl.fromTo(textElement, { filter: "blur(20px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1, duration: 0.5 }, 0.8);
+      tl.fromTo(textElement, 
+        { filter: "blur(10px)", opacity: 0 }, 
+        { filter: "blur(0px)", opacity: 1, duration: 0.3 }, 
+        0.5
+      );
     });
   });
 }
-
     // D. MAIN SLIDERS (Services / Team etc.)
     function initSliders() {
       function animateContent(activeBlock) {
