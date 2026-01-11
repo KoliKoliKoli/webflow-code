@@ -268,7 +268,7 @@ function initPortfolioAnimations() {
     if (captionWrapper) {
       tl.fromTo(captionWrapper, 
         { filter: "blur(20px)", opacity: 0 }, 
-        { filter: "blur(0px)", opacity: 1, duration: 0.5 }, 0.2);
+        { filter: "blur(0px)", opacity: 1, duration: 0.5 }, 0.4);
     }
     
     // 4. Pomarańczowe tło (RYSOWANIE ZE ŚRODKA - naprawione)
@@ -280,7 +280,7 @@ function initPortfolioAnimations() {
           transformOrigin: "center center", // To wymusza rysowanie od środka
           duration: 0.6, 
           ease: "power2.out" 
-        }, 0.4); // Startuje nieco później, kończy na 1.0
+        }, 0.6); // Startuje nieco później, kończy na 1.0
     }
     
     // 5. Teksty
@@ -288,7 +288,7 @@ function initPortfolioAnimations() {
     textElements.forEach(textElement => {
       tl.fromTo(textElement, 
         { filter: "blur(20px)", opacity: 0 }, 
-        { filter: "blur(0px)", opacity: 1, duration: 0.3 }, 0.7);
+        { filter: "blur(0px)", opacity: 1, duration: 0.3 }, 0.8);
     });
   });
 }
