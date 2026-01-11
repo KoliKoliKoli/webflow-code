@@ -242,15 +242,12 @@ function initPortfolioAnimations() {
     const tl = gsap.timeline({
       scrollTrigger: {
         trigger: element,
-        start: "top bottom", // Zaczyna, gdy dół bloku wchodzi na ekran
-        end: "top 2%",      // Kończy, gdy góra bloku jest prawie u samej góry (2%)
-        scrub: 1,           // To daje płynność (wygładzanie ruchu)
+        start: "top bottom",
+        end: "top 20%",
+        scrub: true,           // To daje płynność (wygładzanie ruchu)
         markers: false
       }
     });
-
-    // Ustawiamy wszystko na jedną długość (np. duration: 1), 
-    // aby wszystkie animacje kończyły się dokładnie w tym samym punkcie - u góry ekranu.
 
     // 1. Szerokość całego bloku (kończy na 1.0)
     tl.fromTo(element, 
