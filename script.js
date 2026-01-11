@@ -239,61 +239,59 @@ function initPortfolioAnimations() {
     const captionWrapper = element.querySelector('.caption-wrapper');
     const orangeBg = element.querySelector('.block-bg-orange');
 
-    // Tworzymy timeline, który mapuje scroll na postęp animacji
     const tl = gsap.timeline({
       scrollTrigger: {
         trigger: element,
-        start: "top 95%", // Zaczynamy, gdy blok wejdzie na ekran od dołu
-        end: "top 5%",   // KOŃCZYMY, gdy góra bloku jest prawie u samej góry (5% od topu)
-        scrub: 1,         // Delikatne wygładzenie (możesz dać true dla natychmiastowej reakcji)
-        markers: true
+        start: "top bottom", // Zaczyna, gdy dół bloku wchodzi na ekran
+        end: "top 2%",      // Kończy, gdy góra bloku jest prawie u samej góry (2%)
+        scrub: 1,           // To daje płynność (wygładzanie ruchu)
+        markers: false
       }
     });
 
-    // 1. SZEROKOŚĆ - Główna animacja (trwa przez cały timeline: od 0 do 1)
+    // Ustawiamy wszystko na jedną długość (np. duration: 1), 
+    // aby wszystkie animacje kończyły się dokładnie w tym samym punkcie - u góry ekranu.
+
+    // 1. Szerokość całego bloku (kończy na 1.0)
     tl.fromTo(element, 
       { width: "82%" }, 
-      { width: "100%", ease: "none", duration: 1 }, 
-      0
-    );
+      { width: "100%", duration: 1, ease: "none" }, 0);
 
-    // 2. ŚCIEMNIANIE POPRZEDNIEGO BLOKU (dzieje się szybko na początku, trwa 0.4)
+    // 2. Zaciemnianie poprzedniego bloku (kończy na 1.0)
     if (prevElement && prevElement.classList.contains('portfolio-block')) {
       const bgElement = prevElement.querySelector('.bg-black');
       if (bgElement) {
-        tl.to(bgElement, { 
-          backgroundColor: "rgba(0,0,0,0.85)", 
-          duration: 0.4 
-        }, 0);
+        tl.fromTo(bgElement, 
+          { backgroundColor: "rgba(0,0,0,0)" }, 
+          { backgroundColor: "rgba(0,0,0,0.75)", duration: 1, ease: "none" }, 0);
       }
     }
 
-    // 3. TEKSTY / CAPTION (pojawiają się w środku przewijania)
+    // 3. Caption (pojawia się w połowie drogi)
     if (captionWrapper) {
       tl.fromTo(captionWrapper, 
-        { filter: "blur(15px)", opacity: 0, y: 30 }, 
-        { filter: "blur(0px)", opacity: 1, y: 0, duration: 0.5 }, 
-        0.3 // startuje w 30% postępu scrolla
-      );
-    }
-
-    // 4. POMARAŃCZOWY PASEK (kończy się równo z szerokością bloku w punkcie 1.0)
-    if (orangeBg) {
-      tl.fromTo(orangeBg, 
-        { scaleX: 0, transformOrigin: "left center" }, 
-        { scaleX: 1, duration: 0.4 }, 
-        0.6 // zaczyna w 60%, kończy w 100% (0.6 + 0.4 = 1.0)
-      );
+        { filter: "blur(20px)", opacity: 0 }, 
+        { filter: "blur(0px)", opacity: 1, duration: 0.5 }, 0.2);
     }
     
-    // 5. DODATKOWE TEKSTY
+    // 4. Pomarańczowe tło (RYSOWANIE ZE ŚRODKA - naprawione)
+    if (orangeBg) {
+      tl.fromTo(orangeBg, 
+        { scaleX: 0 }, 
+        { 
+          scaleX: 1, 
+          transformOrigin: "center center", // To wymusza rysowanie od środka
+          duration: 0.6, 
+          ease: "power2.out" 
+        }, 0.4); // Startuje nieco później, kończy na 1.0
+    }
+    
+    // 5. Teksty
     const textElements = element.querySelectorAll('[data-animation="text"]');
     textElements.forEach(textElement => {
       tl.fromTo(textElement, 
-        { filter: "blur(10px)", opacity: 0 }, 
-        { filter: "blur(0px)", opacity: 1, duration: 0.3 }, 
-        0.5
-      );
+        { filter: "blur(20px)", opacity: 0 }, 
+        { filter: "blur(0px)", opacity: 1, duration: 0.3 }, 0.7);
     });
   });
 }
