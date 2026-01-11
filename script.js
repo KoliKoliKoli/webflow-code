@@ -246,7 +246,7 @@ function initPortfolioAnimations() {
         start: "top 95%", // Zaczynamy, gdy blok wejdzie na ekran od dołu
         end: "top 5%",   // KOŃCZYMY, gdy góra bloku jest prawie u samej góry (5% od topu)
         scrub: 1,         // Delikatne wygładzenie (możesz dać true dla natychmiastowej reakcji)
-        markers: false
+        markers: true
       }
     });
 
