@@ -231,40 +231,52 @@
     }
 
     // C. PORTFOLIO BLOCKS (Orange & Width animations)
-    function initPortfolioAnimations() {
-      if (!window.matchMedia("(min-width: 768px)").matches) return;
+function initPortfolioAnimations() {
+  if (!window.matchMedia("(min-width: 768px)").matches) return;
 
-      gsap.utils.toArray("[data-animation='true']").forEach(element => {
-        const prevElement = element.previousElementSibling; 
-        const captionWrapper = element.querySelector('.caption-wrapper');
-        const orangeBg = element.querySelector('.block-bg-orange');
+  gsap.utils.toArray("[data-animation='true']").forEach(element => {
+    const prevElement = element.previousElementSibling; 
+    const captionWrapper = element.querySelector('.caption-wrapper');
+    const orangeBg = element.querySelector('.block-bg-orange');
 
-        const tl = gsap.timeline({
-          scrollTrigger: {
-            trigger: element,
-            start: "top bottom",
-            end: "top 15%",
-            scrub: true, 
-            markers: false 
-          }
-        });
+    const tl = gsap.timeline({
+      scrollTrigger: {
+        trigger: element,
+        // Start: gdy góra elementu wejdzie od dołu
+        start: "top bottom", 
+        // End: gdy góra elementu będzie 15% od góry okna (czyli przebyła 85% ekranu)
+        end: "top 15%", 
+        scrub: true, 
+        markers: false // Włącz na true, żeby zobaczyć linie pomocnicze!
+      }
+    });
 
-        tl.fromTo(element, { width: "82%" }, { width: "100%", duration: 1 }, 0);
+    // 1. Szerokość: zwiększamy duration do 2.1, aby kończyła się razem z pomarańczowym tłem
+    tl.fromTo(element, { width: "82%" }, { width: "100%", duration: 2.1 }, 0);
 
-        if (prevElement && prevElement.classList.contains('portfolio-block')) {
-          const bgElement = prevElement.querySelector('.bg-black');
-          if (bgElement) tl.fromTo(bgElement, { backgroundColor: "rgba(0,0,0,0)" }, { backgroundColor: "rgba(0,0,0,0.75)", duration: 1 }, 0);
-        }
-
-        if (captionWrapper) tl.fromTo(captionWrapper, { filter: "blur(20px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1, duration: 0.5 }, 0.5);
-        if (orangeBg) tl.fromTo(orangeBg, { scaleX: 0, transformOrigin: "center center" }, { scaleX: 1, duration: 1.2 }, 0.9);
-        
-        const textElements = element.querySelectorAll('[data-animation="text"]');
-        textElements.forEach(textElement => {
-          tl.fromTo(textElement, { filter: "blur(20px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1, duration: 0.2 }, 0.8);
-        });
-      });
+    // Reszta animacji
+    if (prevElement && prevElement.classList.contains('portfolio-block')) {
+      const bgElement = prevElement.querySelector('.bg-black');
+      if (bgElement) {
+        tl.fromTo(bgElement, { backgroundColor: "rgba(0,0,0,0)" }, { backgroundColor: "rgba(0,0,0,0.75)", duration: 2.1 }, 0);
+      }
     }
+
+    if (captionWrapper) {
+      tl.fromTo(captionWrapper, { filter: "blur(20px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1, duration: 1 }, 0.5);
+    }
+
+    if (orangeBg) {
+      // Ta animacja kończy się w punkcie 2.1 (0.9 + 1.2)
+      tl.fromTo(orangeBg, { scaleX: 0, transformOrigin: "center center" }, { scaleX: 1, duration: 1.2 }, 0.9);
+    }
+    
+    const textElements = element.querySelectorAll('[data-animation="text"]');
+    textElements.forEach(textElement => {
+      tl.fromTo(textElement, { filter: "blur(20px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1, duration: 0.5 }, 0.8);
+    });
+  });
+}
 
     // D. MAIN SLIDERS (Services / Team etc.)
     function initSliders() {
