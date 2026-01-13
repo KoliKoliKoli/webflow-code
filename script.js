@@ -61,77 +61,147 @@ document.addEventListener("DOMContentLoaded", function () {
   initNavigationLogic();
 
   function initHeroAnimation() {
-  const isMobilePortrait = window.matchMedia("(max-width: 479px)").matches;
+    const isMobilePortrait = window.matchMedia("(max-width: 479px)").matches;
 
-  const heroImg = isMobilePortrait
-    ? document.querySelector(".img-hero.is-mobile")
-    : document.querySelector(".img-hero:not(.is-mobile)");
+    const heroImg = isMobilePortrait
+      ? document.querySelector(".img-hero.is-mobile")
+      : document.querySelector(".img-hero:not(.is-mobile)");
 
-  const heroText = document.querySelector('[animation-data="text-hero"]');
-  const heroButton = document.querySelector('[animation-data="button"]');
-  const heroCaption = document.querySelector('[animation-data="caption"]');
-  const rectangles = gsap.utils.toArray("[animation-rectangle]").sort((a, b) => a.getAttribute("animation-rectangle") - b.getAttribute("animation-rectangle"));
+    const heroText = document.querySelector('[animation-data="text-hero"]');
+    const heroButton = document.querySelector('[animation-data="button"]');
+    const heroCaption = document.querySelector('[animation-data="caption"]');
+    const rectangles = gsap.utils
+      .toArray("[animation-rectangle]")
+      .sort(
+        (a, b) =>
+          a.getAttribute("animation-rectangle") -
+          b.getAttribute("animation-rectangle")
+      );
 
-  // 1. STANY POCZĄTKOWE
-  if (isMobilePortrait) {
-    // MOBILE: Lekkie stany, brak blura
-    if (heroImg) gsap.set(heroImg, { scale: 1, filter: "none", opacity: 1, zIndex: 100 });
-    if (heroText) gsap.set(heroText, { filter: "none", opacity: 0 });
-    if (rectangles.length) gsap.set(rectangles, { opacity: 0, scale: 1, zIndex: 101 });
-  } else {
-    // DESKTOP: Oryginalne stany (NIENARUSZONE)
-    if (heroImg) gsap.set(heroImg, { scale: 2, filter: "blur(5px)", zIndex: 100, transformOrigin: "center center" });
-    if (heroText) gsap.set(heroText, { filter: "blur(5px)", opacity: 0 });
-    if (rectangles.length) gsap.set(rectangles, { opacity: 0, scale: 0.5, zIndex: 101, transformOrigin: "center center" });
-  }
-
-  if (heroButton) gsap.set(heroButton, { x: 40, opacity: 0 });
-  if (heroCaption) gsap.set(heroCaption, { yPercent: -20, opacity: 0 });
-
-  const tl = gsap.timeline({
-    delay: isMobilePortrait ? 0.2 : 0.5,
-    onComplete: () => {
-      window.isLoaderRunning = false;
-      document.documentElement.style.overflow = "";
-      document.body.style.overflow = "";
-      if (window.lenis) { window.lenis.start(); window.lenis.scrollTo(0, { immediate: true }); }
-      window.scrollTo(0, 0);
-
-      // Inicjalizacja reszty (odpala się po zakończeniu timeline)
-      if (typeof initPortfolioAnimations === "function") initPortfolioAnimations();
-      if (typeof initSliders === "function") initSliders();
-      if (typeof initTestimonials === "function") initTestimonials();
-      if (typeof initGeneralAnimations === "function") initGeneralAnimations();
-      if (typeof initPopup === "function") initPopup();
-      initButtonColorLogic();
-      initFormAnimations();
-
-      setTimeout(() => { ScrollTrigger.refresh(); }, 150);
-    },
-  });
-
-  // 2. SEKWENCJA ANIMACJI
-  if (isMobilePortrait) {
-    // --- TIMELINE MOBILE ---
-    if (rectangles.length > 0) {
-      tl.to(rectangles, { opacity: 1, duration: 0.4, stagger: 0.05, ease: "power2.out" }, 0);
+    // 1. STANY POCZĄTKOWE
+    if (isMobilePortrait) {
+      // MOBILE: Lekkie stany, brak blura
+      if (heroImg)
+        gsap.set(heroImg, {
+          scale: 1,
+          filter: "none",
+          opacity: 1,
+          zIndex: 100,
+        });
+      if (heroText) gsap.set(heroText, { filter: "none", opacity: 0 });
+      if (rectangles.length)
+        gsap.set(rectangles, { opacity: 0, scale: 1, zIndex: 101 });
+    } else {
+      // DESKTOP: Oryginalne stany (NIENARUSZONE)
+      if (heroImg)
+        gsap.set(heroImg, {
+          scale: 2,
+          filter: "blur(5px)",
+          zIndex: 100,
+          transformOrigin: "center center",
+        });
+      if (heroText) gsap.set(heroText, { filter: "blur(5px)", opacity: 0 });
+      if (rectangles.length)
+        gsap.set(rectangles, {
+          opacity: 0,
+          scale: 0.5,
+          zIndex: 101,
+          transformOrigin: "center center",
+        });
     }
-    tl.to(heroCaption, { yPercent: 0, opacity: 1, duration: 0.8, ease: "power2.out" }, 0.2);
-    tl.to(heroText, { opacity: 1, duration: 0.8, ease: "power2.out" }, 0.4);
-    tl.to(heroButton, { x: 0, opacity: 1, duration: 0.8, ease: "power2.out" }, 0.6);
-    tl.to({}, { duration: 0.2 }); 
 
-  } else {
-    // --- TIMELINE DESKTOP (TWOJA ORYGINALNA ANIMACJA - NIENARUSZONA) ---
-    if (rectangles.length > 0) {
-      tl.to(rectangles, { opacity: 1, zIndex: 101, scale: 1, duration: 0.6, stagger: 0.2, ease: "power2.out" }, 0);
+    if (heroButton) gsap.set(heroButton, { x: 40, opacity: 0 });
+    if (heroCaption) gsap.set(heroCaption, { yPercent: -20, opacity: 0 });
+
+    const tl = gsap.timeline({
+      delay: isMobilePortrait ? 0.2 : 0.5,
+      onComplete: () => {
+        window.isLoaderRunning = false;
+        document.documentElement.style.overflow = "";
+        document.body.style.overflow = "";
+        if (window.lenis) {
+          window.lenis.start();
+          window.lenis.scrollTo(0, { immediate: true });
+        }
+        window.scrollTo(0, 0);
+
+        // Inicjalizacja reszty (odpala się po zakończeniu timeline)
+        if (typeof initPortfolioAnimations === "function")
+          initPortfolioAnimations();
+        if (typeof initSliders === "function") initSliders();
+        if (typeof initTestimonials === "function") initTestimonials();
+        if (typeof initGeneralAnimations === "function")
+          initGeneralAnimations();
+        if (typeof initPopup === "function") initPopup();
+        initButtonColorLogic();
+        initFormAnimations();
+
+        setTimeout(() => {
+          ScrollTrigger.refresh();
+        }, 150);
+      },
+    });
+
+    // 2. SEKWENCJA ANIMACJI
+    if (isMobilePortrait) {
+      // --- TIMELINE MOBILE ---
+      if (rectangles.length > 0) {
+        tl.to(
+          rectangles,
+          { opacity: 1, duration: 0.4, stagger: 0.05, ease: "power2.out" },
+          0
+        );
+      }
+      tl.to(
+        heroCaption,
+        { yPercent: 0, opacity: 1, duration: 0.8, ease: "power2.out" },
+        0.2
+      );
+      tl.to(heroText, { opacity: 1, duration: 0.8, ease: "power2.out" }, 0.4);
+      tl.to(
+        heroButton,
+        { x: 0, opacity: 1, duration: 0.8, ease: "power2.out" },
+        0.6
+      );
+      tl.to({}, { duration: 0.2 });
+    } else {
+      // --- TIMELINE DESKTOP (TWOJA ORYGINALNA ANIMACJA - NIENARUSZONA) ---
+      if (rectangles.length > 0) {
+        tl.to(
+          rectangles,
+          {
+            opacity: 1,
+            zIndex: 101,
+            scale: 1,
+            duration: 0.6,
+            stagger: 0.2,
+            ease: "power2.out",
+          },
+          0
+        );
+      }
+      tl.to(
+        heroImg,
+        { scale: 1, filter: "blur(0px)", duration: 1.8, ease: "power2.inOut" },
+        0.5
+      );
+      tl.to(
+        heroCaption,
+        { yPercent: 0, opacity: 1, duration: 1, ease: "power2.out" },
+        1.8
+      );
+      tl.to(
+        heroText,
+        { filter: "blur(0px)", opacity: 1, duration: 1.2, ease: "power2.out" },
+        2.0
+      );
+      tl.to(
+        heroButton,
+        { x: 0, opacity: 1, duration: 1.2, ease: "power2.out" },
+        2.2
+      );
     }
-    tl.to(heroImg, { scale: 1, filter: "blur(0px)", duration: 1.8, ease: "power2.inOut" }, 0.5);
-    tl.to(heroCaption, { yPercent: 0, opacity: 1, duration: 1, ease: "power2.out" }, 1.8);
-    tl.to(heroText, { filter: "blur(0px)", opacity: 1, duration: 1.2, ease: "power2.out" }, 2.0);
-    tl.to(heroButton, { x: 0, opacity: 1, duration: 1.2, ease: "power2.out" }, 2.2);
   }
-}
 
   // B. NAVIGATION (Fixed hide/show + Active States + Hover)
   function initNavigationLogic() {
@@ -768,7 +838,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     gsap.to(fields, {
       backgroundSize: "100% 100%",
-      duration: 1.2,
+      duration: 1.8,
       ease: "power2.inOut",
       stagger: 0.4,
       scrollTrigger: {
