@@ -61,10 +61,8 @@ document.addEventListener("DOMContentLoaded", function () {
   initNavigationLogic();
 
   function initHeroAnimation() {
-    // Sprawdzamy, czy jesteśmy na Mobile Portrait (poniżej 480px)
     const isMobilePortrait = window.matchMedia("(max-width: 479px)").matches;
 
-    // Wybieramy odpowiednie zdjęcie: .is-mobile dla telefonu, lub :not(.is-mobile) dla reszty
     const heroImg = isMobilePortrait
       ? document.querySelector(".img-hero.is-mobile")
       : document.querySelector(".img-hero:not(.is-mobile)");
@@ -72,6 +70,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const heroText = document.querySelector('[animation-data="text-hero"]');
     const heroButton = document.querySelector('[animation-data="button"]');
     const heroCaption = document.querySelector('[animation-data="caption"]');
+
+    // Pobieramy i sortujemy raz, przed startem wszystkiego
     const rectangles = gsap.utils
       .toArray("[animation-rectangle]")
       .sort(
@@ -80,7 +80,12 @@ document.addEventListener("DOMContentLoaded", function () {
           b.getAttribute("animation-rectangle")
       );
 
-    // Stany początkowe dla wybranego heroImg - skala 3 na mobile portrait
+    // 1. HARDWARE ACCELERATION - Podpowiadamy karcie graficznej, co będziemy animować
+    if (heroImg) gsap.set(heroImg, { willChange: "transform, filter" });
+    if (rectangles.length)
+      gsap.set(rectangles, { willChange: "transform, opacity" });
+
+    // 2. STANY POCZĄTKOWE (Natychmiastowe)
     if (heroImg) {
       gsap.set(heroImg, {
         scale: isMobilePortrait ? 3 : 2,
@@ -93,93 +98,104 @@ document.addEventListener("DOMContentLoaded", function () {
     if (heroText) gsap.set(heroText, { filter: "blur(5px)", opacity: 0 });
     if (heroButton) gsap.set(heroButton, { x: 40, opacity: 0 });
     if (heroCaption) gsap.set(heroCaption, { yPercent: -20, opacity: 0 });
-    if (rectangles.length > 0)
+
+    if (rectangles.length > 0) {
       gsap.set(rectangles, {
         opacity: 0,
         scale: 0.5,
+        zIndex: 101, // Ustawiamy stały z-index od razu, nie animujemy go
         transformOrigin: "center center",
       });
+    }
 
-    const tl = gsap.timeline({
-      // Zmniejszony delay na mobile, żeby użytkownik nie patrzył na "zamrożony" ekran
-      delay: isMobilePortrait ? 0.2 : 0.5,
-      onComplete: () => {
-        window.isLoaderRunning = false;
-        if (typeof preventScrollEvents === "function") {
-          window.removeEventListener("wheel", preventScrollEvents);
-          window.removeEventListener("touchmove", preventScrollEvents);
-        }
+    // 3. START ANIMACJI Z MAŁYM BUFOREM (requestAnimationFrame)
+    // To daje przeglądarce czas na "odetchnięcie" po załadowaniu skryptu
+    requestAnimationFrame(() => {
+      const tl = gsap.timeline({
+        delay: isMobilePortrait ? 0.3 : 0.5,
+        defaults: { force3D: true }, // Wymusza GPU dla każdego elementu w timeline
+        onComplete: () => {
+          window.isLoaderRunning = false;
+          if (typeof preventScrollEvents === "function") {
+            window.removeEventListener("wheel", preventScrollEvents);
+            window.removeEventListener("touchmove", preventScrollEvents);
+          }
 
-        document.documentElement.style.overflow = "";
-        document.body.style.overflow = "";
+          document.documentElement.style.overflow = "";
+          document.body.style.overflow = "";
 
-        if (window.lenis) {
-          window.lenis.start();
-          window.lenis.scrollTo(0, { immediate: true });
-        }
+          if (window.lenis) {
+            window.lenis.start();
+            window.lenis.scrollTo(0, { immediate: true });
+          }
 
-        window.scrollTo(0, 0);
+          window.scrollTo(0, 0);
 
-        if (typeof initPortfolioAnimations === "function")
-          initPortfolioAnimations();
-        if (typeof initSliders === "function") initSliders();
-        if (typeof initTestimonials === "function") initTestimonials();
-        if (typeof initGeneralAnimations === "function")
-          initGeneralAnimations();
-        if (typeof initPopup === "function") initPopup();
-        if (typeof initButtonColorLogic === "function") initButtonColorLogic();
-        if (typeof initFormAnimations === "function") initFormAnimations();
+          // Inicjalizacja reszty świata
+          if (typeof initPortfolioAnimations === "function")
+            initPortfolioAnimations();
+          if (typeof initSliders === "function") initSliders();
+          if (typeof initTestimonials === "function") initTestimonials();
+          if (typeof initGeneralAnimations === "function")
+            initGeneralAnimations();
+          if (typeof initPopup === "function") initPopup();
+          if (typeof initButtonColorLogic === "function")
+            initButtonColorLogic();
+          if (typeof initFormAnimations === "function") initFormAnimations();
 
-        setTimeout(() => {
-          ScrollTrigger.refresh();
-        }, 150);
-      },
-    });
-
-    // Animacja Hero
-    if (rectangles.length > 0) {
-      tl.to(
-        rectangles,
-        {
-          opacity: 1,
-          zIndex: 101,
-          scale: 1,
-          duration: 0.6,
-          // Zagęszczony stagger na mobile, żeby szybciej przeszło do zdjęcia
-          stagger: isMobilePortrait ? 0.1 : 0.2,
-          ease: "power2.out",
+          setTimeout(() => {
+            ScrollTrigger.refresh();
+          }, 150);
         },
-        0
-      );
-    }
+      });
 
-    if (heroImg) {
-      tl.to(
-        heroImg,
-        { scale: 1, filter: "blur(0px)", duration: 1.8, ease: "power2.inOut" },
-        // Na mobile zaczynamy animację zdjęcia wcześniej, by skrócić czas oczekiwania
-        isMobilePortrait ? 0.3 : 0.5
-      );
-    }
+      // Sekwencja animacji
+      if (rectangles.length > 0) {
+        tl.to(
+          rectangles,
+          {
+            opacity: 1,
+            scale: 1,
+            duration: 0.6,
+            stagger: isMobilePortrait ? 0.08 : 0.15, // Jeszcze szybszy stagger na mobile
+            ease: "power2.out",
+          },
+          0
+        );
+      }
 
-    if (heroCaption)
-      tl.to(
-        heroCaption,
-        { yPercent: 0, opacity: 1, duration: 1, ease: "power2.out" },
-        1.8
-      );
-    if (heroText)
-      tl.to(
-        heroText,
-        { filter: "blur(0px)", opacity: 1, duration: 1.2, ease: "power2.out" },
-        2.0
-      );
-    if (heroButton)
-      tl.to(
-        heroButton,
-        { x: 0, opacity: 1, duration: 1.2, ease: "power2.out" },
-        2.2
-      );
+      if (heroImg) {
+        tl.to(
+          heroImg,
+          {
+            scale: 1,
+            filter: "blur(0px)",
+            duration: 1.8,
+            ease: "power2.inOut",
+          },
+          0.5
+        );
+      }
+
+      if (heroCaption)
+        tl.to(
+          heroCaption,
+          { yPercent: 0, opacity: 1, duration: 1, ease: "power2.out" },
+          1.6
+        );
+      if (heroText)
+        tl.to(
+          heroText,
+          { filter: "blur(0px)", opacity: 1, duration: 1, ease: "power2.out" },
+          1.8
+        );
+      if (heroButton)
+        tl.to(
+          heroButton,
+          { x: 0, opacity: 1, duration: 1, ease: "power2.out" },
+          2.0
+        );
+    });
   }
 
   // B. NAVIGATION (Fixed hide/show + Active States + Hover)
