@@ -11,55 +11,6 @@ window.isLoaderRunning = true;
 document.documentElement.style.overflow = "hidden";
 document.body.style.overflow = "hidden";
 
-function preventScrollEvents(e) {
-  if (window.isLoaderRunning) {
-    if (e.cancelable) e.preventDefault();
-    return false;
-  }
-}
-
-function forceScrollTop() {
-  if (window.isLoaderRunning) {
-    if (!document.hidden) {
-      window.scrollTo(0, 0);
-      if (window.lenis) window.lenis.scrollTo(0, { immediate: true });
-    }
-    requestAnimationFrame(forceScrollTop);
-  }
-}
-
-window.addEventListener("wheel", preventScrollEvents, { passive: false });
-window.addEventListener("touchmove", preventScrollEvents, { passive: false });
-requestAnimationFrame(forceScrollTop);
-
-// ---  INICJALIZACJA LENIS ---
-if (Webflow.env("editor") === undefined) {
-  window.lenis = new Lenis({
-    lerp: 0.8,
-    wheelMultiplier: 0.8,
-    infinite: false,
-    gestureOrientation: "vertical",
-    normalizeWheel: false,
-    smoothTouch: false,
-  });
-
-  window.lenis.stop();
-  window.lenis.scrollTo(0, { immediate: true });
-
-  // Synchronizacja z GSAP
-  window.lenis.on("scroll", ScrollTrigger.update);
-  gsap.ticker.add((time) => {
-    if (window.lenis) window.lenis.raf(time * 1000);
-  });
-}
-
-// --- GŁÓWNA INICJALIZACJA PO DOM ---
-document.addEventListener("DOMContentLoaded", function () {
-  gsap.registerPlugin(ScrollTrigger);
-
-  initHeroAnimation();
-  initNavigationLogic();
-
   function initHeroAnimation() {
     const isMobilePortrait = window.matchMedia("(max-width: 479px)").matches;
 
@@ -78,129 +29,85 @@ document.addEventListener("DOMContentLoaded", function () {
           b.getAttribute("animation-rectangle")
       );
 
-    // 1. STANY POCZĄTKOWE
+    // 1. STANY POCZĄTKOWE + Akceleracja sprzętowa
     if (isMobilePortrait) {
-      // MOBILE: Lekkie stany, brak blura
-      if (heroImg)
-        gsap.set(heroImg, {
-          scale: 1,
-          filter: "none",
-          opacity: 1,
-          zIndex: 100,
-        });
+      if (heroImg) gsap.set(heroImg, { scale: 1, filter: "none", opacity: 1, zIndex: 100 });
       if (heroText) gsap.set(heroText, { filter: "none", opacity: 0 });
-      if (rectangles.length)
-        gsap.set(rectangles, { opacity: 0, scale: 1, zIndex: 101 });
-    } else {
-      // DESKTOP: Oryginalne stany (NIENARUSZONE)
-      if (heroImg)
-        gsap.set(heroImg, {
-          scale: 2,
-          filter: "blur(5px)",
-          zIndex: 100,
-          transformOrigin: "center center",
-        });
-      if (heroText) gsap.set(heroText, { filter: "blur(5px)", opacity: 0 });
-      if (rectangles.length)
-        gsap.set(rectangles, {
-          opacity: 0,
-          scale: 0.5,
+      if (rectangles.length) {
+        gsap.set(rectangles, { 
+          opacity: 0, 
+          scale: 1, 
           zIndex: 101,
-          transformOrigin: "center center",
+          force3D: true, // Wymusza GPU
+          willChange: "opacity" // Podpowiada przeglądarce
         });
+      }
+    } else {
+      // DESKTOP: NIENARUSZONE
+      if (heroImg) gsap.set(heroImg, { scale: 2, filter: "blur(5px)", zIndex: 100, transformOrigin: "center center" });
+      if (heroText) gsap.set(heroText, { filter: "blur(5px)", opacity: 0 });
+      if (rectangles.length) gsap.set(rectangles, { opacity: 0, scale: 0.5, zIndex: 101, transformOrigin: "center center" });
     }
 
-    if (heroButton) gsap.set(heroButton, { x: 40, opacity: 0 });
-    if (heroCaption) gsap.set(heroCaption, { yPercent: -20, opacity: 0 });
+    if (heroButton) gsap.set(heroButton, { x: 40, opacity: 0, force3D: true });
+    if (heroCaption) gsap.set(heroCaption, { yPercent: -20, opacity: 0, force3D: true });
 
-    const tl = gsap.timeline({
-      delay: isMobilePortrait ? 0.2 : 0.5,
-      onComplete: () => {
-        window.isLoaderRunning = false;
-        document.documentElement.style.overflow = "";
-        document.body.style.overflow = "";
-        if (window.lenis) {
-          window.lenis.start();
-          window.lenis.scrollTo(0, { immediate: true });
-        }
-        window.scrollTo(0, 0);
+    // Funkcja do "bezpiecznej" inicjalizacji reszty strony
+    const safeInit = () => {
+      window.isLoaderRunning = false;
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+      
+      if (window.lenis) {
+        window.lenis.start();
+        window.lenis.scrollTo(0, { immediate: true });
+      }
+      window.scrollTo(0, 0);
 
-        // Inicjalizacja reszty (odpala się po zakończeniu timeline)
-        if (typeof initPortfolioAnimations === "function")
-          initPortfolioAnimations();
-        if (typeof initSliders === "function") initSliders();
-        if (typeof initTestimonials === "function") initTestimonials();
-        if (typeof initGeneralAnimations === "function")
-          initGeneralAnimations();
+      // Na mobile rozbijamy to na małe kawałki, żeby nie zamrozić ekranu
+      const delay = isMobilePortrait ? 50 : 0;
+      
+      setTimeout(() => { if (typeof initPortfolioAnimations === "function") initPortfolioAnimations(); }, delay);
+      setTimeout(() => { if (typeof initSliders === "function") initSliders(); }, delay * 2);
+      setTimeout(() => { if (typeof initTestimonials === "function") initTestimonials(); }, delay * 3);
+      setTimeout(() => { 
+        if (typeof initGeneralAnimations === "function") initGeneralAnimations();
         if (typeof initPopup === "function") initPopup();
         initButtonColorLogic();
         initFormAnimations();
+        ScrollTrigger.refresh();
+      }, delay * 4);
+    };
 
-        setTimeout(() => {
-          ScrollTrigger.refresh();
-        }, 150);
-      },
+    // Uruchamiamy animację w następnej klatce renderowania
+    requestAnimationFrame(() => {
+      const tl = gsap.timeline({
+        delay: isMobilePortrait ? 0.3 : 0.5, // Większy bufor na mobile dla stabilności
+        defaults: { force3D: true }, // Globalne wymuszenie GPU dla całego timeline
+        onComplete: safeInit
+      });
+
+      if (isMobilePortrait) {
+        // --- TIMELINE MOBILE ---
+        if (rectangles.length > 0) {
+          tl.to(rectangles, { opacity: 1, duration: 0.4, stagger: 0.05, ease: "power2.out" }, 0);
+        }
+        tl.to(heroCaption, { yPercent: 0, opacity: 1, duration: 0.6, ease: "power2.out" }, 0.2);
+        tl.to(heroText, { opacity: 1, duration: 0.6, ease: "power2.out" }, 0.4);
+        tl.to(heroButton, { x: 0, opacity: 1, duration: 0.6, ease: "power2.out" }, 0.6);
+        // "Odech" dla procesora przed ciężką inicjalizacją w onComplete
+        tl.to({}, { duration: 0.3 }); 
+      } else {
+        // --- TIMELINE DESKTOP (NIENARUSZONY) ---
+        if (rectangles.length > 0) {
+          tl.to(rectangles, { opacity: 1, zIndex: 101, scale: 1, duration: 0.6, stagger: 0.2, ease: "power2.out" }, 0);
+        }
+        tl.to(heroImg, { scale: 1, filter: "blur(0px)", duration: 1.8, ease: "power2.inOut" }, 0.5);
+        tl.to(heroCaption, { yPercent: 0, opacity: 1, duration: 1, ease: "power2.out" }, 1.8);
+        tl.to(heroText, { filter: "blur(0px)", opacity: 1, duration: 1.2, ease: "power2.out" }, 2.0);
+        tl.to(heroButton, { x: 0, opacity: 1, duration: 1.2, ease: "power2.out" }, 2.2);
+      }
     });
-
-    // 2. SEKWENCJA ANIMACJI
-    if (isMobilePortrait) {
-      // --- TIMELINE MOBILE ---
-      if (rectangles.length > 0) {
-        tl.to(
-          rectangles,
-          { opacity: 1, duration: 0.4, stagger: 0.05, ease: "power2.out" },
-          0
-        );
-      }
-      tl.to(
-        heroCaption,
-        { yPercent: 0, opacity: 1, duration: 0.8, ease: "power2.out" },
-        0.2
-      );
-      tl.to(heroText, { opacity: 1, duration: 0.8, ease: "power2.out" }, 0.4);
-      tl.to(
-        heroButton,
-        { x: 0, opacity: 1, duration: 0.8, ease: "power2.out" },
-        0.6
-      );
-      tl.to({}, { duration: 0.2 });
-    } else {
-      // --- TIMELINE DESKTOP (TWOJA ORYGINALNA ANIMACJA - NIENARUSZONA) ---
-      if (rectangles.length > 0) {
-        tl.to(
-          rectangles,
-          {
-            opacity: 1,
-            zIndex: 101,
-            scale: 1,
-            duration: 0.6,
-            stagger: 0.2,
-            ease: "power2.out",
-          },
-          0
-        );
-      }
-      tl.to(
-        heroImg,
-        { scale: 1, filter: "blur(0px)", duration: 1.8, ease: "power2.inOut" },
-        0.5
-      );
-      tl.to(
-        heroCaption,
-        { yPercent: 0, opacity: 1, duration: 1, ease: "power2.out" },
-        1.8
-      );
-      tl.to(
-        heroText,
-        { filter: "blur(0px)", opacity: 1, duration: 1.2, ease: "power2.out" },
-        2.0
-      );
-      tl.to(
-        heroButton,
-        { x: 0, opacity: 1, duration: 1.2, ease: "power2.out" },
-        2.2
-      );
-    }
   }
 
   // B. NAVIGATION (Fixed hide/show + Active States + Hover)
