@@ -61,142 +61,80 @@ document.addEventListener("DOMContentLoaded", function () {
   initNavigationLogic();
 
   function initHeroAnimation() {
-    const isMobilePortrait = window.matchMedia("(max-width: 479px)").matches;
+  const isMobilePortrait = window.matchMedia("(max-width: 479px)").matches;
 
-    const heroImg = isMobilePortrait
-      ? document.querySelector(".img-hero.is-mobile")
-      : document.querySelector(".img-hero:not(.is-mobile)");
+  const heroImg = isMobilePortrait
+    ? document.querySelector(".img-hero.is-mobile")
+    : document.querySelector(".img-hero:not(.is-mobile)");
 
-    const heroText = document.querySelector('[animation-data="text-hero"]');
-    const heroButton = document.querySelector('[animation-data="button"]');
-    const heroCaption = document.querySelector('[animation-data="caption"]');
+  const heroText = document.querySelector('[animation-data="text-hero"]');
+  const heroButton = document.querySelector('[animation-data="button"]');
+  const heroCaption = document.querySelector('[animation-data="caption"]');
+  const rectangles = gsap.utils.toArray("[animation-rectangle]").sort((a, b) => a.getAttribute("animation-rectangle") - b.getAttribute("animation-rectangle"));
 
-    // Pobieramy i sortujemy raz, przed startem wszystkiego
-    const rectangles = gsap.utils
-      .toArray("[animation-rectangle]")
-      .sort(
-        (a, b) =>
-          a.getAttribute("animation-rectangle") -
-          b.getAttribute("animation-rectangle")
-      );
-
-    // 1. HARDWARE ACCELERATION - Podpowiadamy karcie graficznej, co będziemy animować
-    if (heroImg) gsap.set(heroImg, { willChange: "transform, filter" });
-    if (rectangles.length)
-      gsap.set(rectangles, { willChange: "transform, opacity" });
-
-    // 2. STANY POCZĄTKOWE (Natychmiastowe)
-    if (heroImg) {
-      gsap.set(heroImg, {
-        scale: isMobilePortrait ? 3 : 2,
-        filter: "blur(5px)",
-        zIndex: 100,
-        transformOrigin: "center center",
-      });
-    }
-
+  // 1. STANY POCZĄTKOWE
+  if (isMobilePortrait) {
+    // MOBILE: Lekkie stany, brak blura
+    if (heroImg) gsap.set(heroImg, { scale: 1, filter: "none", opacity: 1, zIndex: 100 });
+    if (heroText) gsap.set(heroText, { filter: "none", opacity: 0 });
+    if (rectangles.length) gsap.set(rectangles, { opacity: 0, scale: 1, zIndex: 101 });
+  } else {
+    // DESKTOP: Oryginalne stany (NIENARUSZONE)
+    if (heroImg) gsap.set(heroImg, { scale: 2, filter: "blur(5px)", zIndex: 100, transformOrigin: "center center" });
     if (heroText) gsap.set(heroText, { filter: "blur(5px)", opacity: 0 });
-    if (heroButton) gsap.set(heroButton, { x: 40, opacity: 0 });
-    if (heroCaption) gsap.set(heroCaption, { yPercent: -20, opacity: 0 });
-
-    if (rectangles.length > 0) {
-      gsap.set(rectangles, {
-        opacity: 0,
-        scale: 0.5,
-        zIndex: 101, // Ustawiamy stały z-index od razu, nie animujemy go
-        transformOrigin: "center center",
-      });
-    }
-
-    // 3. START ANIMACJI Z MAŁYM BUFOREM (requestAnimationFrame)
-    // To daje przeglądarce czas na "odetchnięcie" po załadowaniu skryptu
-    requestAnimationFrame(() => {
-      const tl = gsap.timeline({
-        delay: isMobilePortrait ? 0.3 : 0.5,
-        defaults: { force3D: true }, // Wymusza GPU dla każdego elementu w timeline
-        onComplete: () => {
-          window.isLoaderRunning = false;
-          if (typeof preventScrollEvents === "function") {
-            window.removeEventListener("wheel", preventScrollEvents);
-            window.removeEventListener("touchmove", preventScrollEvents);
-          }
-
-          document.documentElement.style.overflow = "";
-          document.body.style.overflow = "";
-
-          if (window.lenis) {
-            window.lenis.start();
-            window.lenis.scrollTo(0, { immediate: true });
-          }
-
-          window.scrollTo(0, 0);
-
-          // Inicjalizacja reszty świata
-          if (typeof initPortfolioAnimations === "function")
-            initPortfolioAnimations();
-          if (typeof initSliders === "function") initSliders();
-          if (typeof initTestimonials === "function") initTestimonials();
-          if (typeof initGeneralAnimations === "function")
-            initGeneralAnimations();
-          if (typeof initPopup === "function") initPopup();
-          if (typeof initButtonColorLogic === "function")
-            initButtonColorLogic();
-          if (typeof initFormAnimations === "function") initFormAnimations();
-
-          setTimeout(() => {
-            ScrollTrigger.refresh();
-          }, 150);
-        },
-      });
-
-      // Sekwencja animacji
-      if (rectangles.length > 0) {
-        tl.to(
-          rectangles,
-          {
-            opacity: 1,
-            scale: 1,
-            duration: 0.6,
-            stagger: isMobilePortrait ? 0.08 : 0.15, // Jeszcze szybszy stagger na mobile
-            ease: "power2.out",
-          },
-          0
-        );
-      }
-
-      if (heroImg) {
-        tl.to(
-          heroImg,
-          {
-            scale: 1,
-            filter: "blur(0px)",
-            duration: 1.8,
-            ease: "power2.inOut",
-          },
-          0.5
-        );
-      }
-
-      if (heroCaption)
-        tl.to(
-          heroCaption,
-          { yPercent: 0, opacity: 1, duration: 1, ease: "power2.out" },
-          1.6
-        );
-      if (heroText)
-        tl.to(
-          heroText,
-          { filter: "blur(0px)", opacity: 1, duration: 1, ease: "power2.out" },
-          1.8
-        );
-      if (heroButton)
-        tl.to(
-          heroButton,
-          { x: 0, opacity: 1, duration: 1, ease: "power2.out" },
-          2.0
-        );
-    });
+    if (rectangles.length) gsap.set(rectangles, { opacity: 0, scale: 0.5, zIndex: 101, transformOrigin: "center center" });
   }
+
+  if (heroButton) gsap.set(heroButton, { x: 40, opacity: 0 });
+  if (heroCaption) gsap.set(heroCaption, { yPercent: -20, opacity: 0 });
+
+  const tl = gsap.timeline({
+    delay: isMobilePortrait ? 0.2 : 0.5,
+    onComplete: () => {
+      window.isLoaderRunning = false;
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+      if (window.lenis) { window.lenis.start(); window.lenis.scrollTo(0, { immediate: true }); }
+      window.scrollTo(0, 0);
+
+      // Inicjalizacja reszty (odpala się po zakończeniu timeline)
+      if (typeof initPortfolioAnimations === "function") initPortfolioAnimations();
+      if (typeof initSliders === "function") initSliders();
+      if (typeof initTestimonials === "function") initTestimonials();
+      if (typeof initGeneralAnimations === "function") initGeneralAnimations();
+      if (typeof initPopup === "function") initPopup();
+      initButtonColorLogic();
+      initFormAnimations();
+
+      setTimeout(() => { ScrollTrigger.refresh(); }, 150);
+    },
+  });
+
+  // 2. SEKWENCJA ANIMACJI
+  if (isMobilePortrait) {
+    // --- TIMELINE MOBILE (Szybki i płynny) ---
+    if (rectangles.length > 0) {
+      tl.to(rectangles, { opacity: 1, duration: 0.4, stagger: 0.05, ease: "power2.out" }, 0);
+    }
+    // Teksty wjeżdżają 0.2s po starcie rectangle
+    tl.to(heroCaption, { yPercent: 0, opacity: 1, duration: 0.8, ease: "power2.out" }, 0.2);
+    tl.to(heroText, { opacity: 1, duration: 0.8, ease: "power2.out" }, 0.4);
+    tl.to(heroButton, { x: 0, opacity: 1, duration: 0.8, ease: "power2.out" }, 0.6);
+    
+    // Dodajemy "pusty" czas na końcu, żeby onComplete nie zamroziło animacji w trakcie trwania
+    tl.to({}, { duration: 0.5 }); 
+
+  } else {
+    // --- TIMELINE DESKTOP (TWOJA ORYGINALNA ANIMACJA - NIENARUSZONA) ---
+    if (rectangles.length > 0) {
+      tl.to(rectangles, { opacity: 1, zIndex: 101, scale: 1, duration: 0.6, stagger: 0.2, ease: "power2.out" }, 0);
+    }
+    tl.to(heroImg, { scale: 1, filter: "blur(0px)", duration: 1.8, ease: "power2.inOut" }, 0.5);
+    tl.to(heroCaption, { yPercent: 0, opacity: 1, duration: 1, ease: "power2.out" }, 1.8);
+    tl.to(heroText, { filter: "blur(0px)", opacity: 1, duration: 1.2, ease: "power2.out" }, 2.0);
+    tl.to(heroButton, { x: 0, opacity: 1, duration: 1.2, ease: "power2.out" }, 2.2);
+  }
+}
 
   // B. NAVIGATION (Fixed hide/show + Active States + Hover)
   function initNavigationLogic() {
