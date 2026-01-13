@@ -112,17 +112,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // 2. SEKWENCJA ANIMACJI
   if (isMobilePortrait) {
-    // --- TIMELINE MOBILE (Szybki i płynny) ---
+    // --- TIMELINE MOBILE ---
     if (rectangles.length > 0) {
       tl.to(rectangles, { opacity: 1, duration: 0.4, stagger: 0.05, ease: "power2.out" }, 0);
     }
-    // Teksty wjeżdżają 0.2s po starcie rectangle
     tl.to(heroCaption, { yPercent: 0, opacity: 1, duration: 0.8, ease: "power2.out" }, 0.2);
     tl.to(heroText, { opacity: 1, duration: 0.8, ease: "power2.out" }, 0.4);
     tl.to(heroButton, { x: 0, opacity: 1, duration: 0.8, ease: "power2.out" }, 0.6);
-    
-    // Dodajemy "pusty" czas na końcu, żeby onComplete nie zamroziło animacji w trakcie trwania
-    tl.to({}, { duration: 0.5 }); 
+    tl.to({}, { duration: 0.2 }); 
 
   } else {
     // --- TIMELINE DESKTOP (TWOJA ORYGINALNA ANIMACJA - NIENARUSZONA) ---
