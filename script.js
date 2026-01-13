@@ -38,8 +38,8 @@ document.body.style.overflow = "hidden";
           opacity: 0, 
           scale: 1, 
           zIndex: 101,
-          force3D: true, // Wymusza GPU
-          willChange: "opacity" // Podpowiada przeglądarce
+          force3D: true, 
+          willChange: "opacity" 
         });
       }
     } else {
@@ -52,7 +52,7 @@ document.body.style.overflow = "hidden";
     if (heroButton) gsap.set(heroButton, { x: 40, opacity: 0, force3D: true });
     if (heroCaption) gsap.set(heroCaption, { yPercent: -20, opacity: 0, force3D: true });
 
-    // Funkcja do "bezpiecznej" inicjalizacji reszty strony
+    
     const safeInit = () => {
       window.isLoaderRunning = false;
       document.documentElement.style.overflow = "";
@@ -82,8 +82,8 @@ document.body.style.overflow = "hidden";
     // Uruchamiamy animację w następnej klatce renderowania
     requestAnimationFrame(() => {
       const tl = gsap.timeline({
-        delay: isMobilePortrait ? 0.3 : 0.5, // Większy bufor na mobile dla stabilności
-        defaults: { force3D: true }, // Globalne wymuszenie GPU dla całego timeline
+        delay: isMobilePortrait ? 0.3 : 0.4,
+        defaults: { force3D: true },
         onComplete: safeInit
       });
 
@@ -96,9 +96,9 @@ document.body.style.overflow = "hidden";
         tl.to(heroText, { opacity: 1, duration: 0.6, ease: "power2.out" }, 0.4);
         tl.to(heroButton, { x: 0, opacity: 1, duration: 0.6, ease: "power2.out" }, 0.6);
         // "Odech" dla procesora przed ciężką inicjalizacją w onComplete
-        tl.to({}, { duration: 0.3 }); 
+        tl.to({}, { duration: 0 }); 
       } else {
-        // --- TIMELINE DESKTOP (NIENARUSZONY) ---
+        // --- TIMELINE DESKTOP ---
         if (rectangles.length > 0) {
           tl.to(rectangles, { opacity: 1, zIndex: 101, scale: 1, duration: 0.6, stagger: 0.2, ease: "power2.out" }, 0);
         }
