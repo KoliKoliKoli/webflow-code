@@ -1,412 +1,846 @@
- // --- 1. PRELOADER & SCROLL LOCK (Musi działać natychmiast) ---
-  if (history.scrollRestoration) {
-    history.scrollRestoration = 'manual';
-  }
-  
-  // Stan blokady scrolla
-  window.isLoaderRunning = true;
+// --- A ABSOLUTNE WYMUSZENIE GÓRY STRONY ---
+if (history.scrollRestoration) {
+  history.scrollRestoration = "manual";
+}
 
-  // Funkcja blokująca zdarzenia scrolla (wheel/touch)
-  function preventScrollEvents(e) {
-    if (window.isLoaderRunning) {
-      e.preventDefault();
-      e.stopPropagation();
-      return false;
-    }
-  }
+window.scrollTo(0, 0);
 
-  // Funkcja wymuszająca pozycję 0,0 (dla starszych przeglądarek/pasków scrolla)
-  function forceScrollTop() {
-    if (window.isLoaderRunning) {
-      window.scrollTo(0, 0);
-      requestAnimationFrame(forceScrollTop);
-    }
-  }
+window.lenis = null;
+window.isLoaderRunning = true;
 
-  // Zapinamy blokady natychmiast
-  window.scrollTo(0, 0);
-  window.addEventListener('wheel', preventScrollEvents, { passive: false });
-  window.addEventListener('touchmove', preventScrollEvents, { passive: false });
-  requestAnimationFrame(forceScrollTop);
+document.documentElement.style.overflow = "hidden";
+document.body.style.overflow = "hidden";
 
-
-  // --- 2. GŁÓWNA INICJALIZACJA PO ZAŁADOWANIU DOM ---
-  document.addEventListener("DOMContentLoaded", function () {
-    
-    // Rejestracja GSAP raz dla całego projektu
-    gsap.registerPlugin(ScrollTrigger);
-    
-    // Uruchamiamy poszczególne moduły
-    initHeroAnimation();
-    initNavigationLogic();
-    initPortfolioAnimations();
-    initSliders();
-    initTestimonials();
-    initGeneralAnimations(); // Oferta i teksty
-
-    // --- FUNKCJE MODUŁOWE ---
-
-    // A. HERO SECTION & UNLOCK SCROLL
-    function initHeroAnimation() {
-      const heroImg = document.querySelector('.img-hero');
-      const heroText = document.querySelector('[animation-data="text-hero"]');
-      const heroButton = document.querySelector('[animation-data="button"]');
-      const heroCaption = document.querySelector('[animation-data="caption"]');
-      const rectangles = gsap.utils.toArray('[animation-rectangle]').sort((a, b) => 
-        a.getAttribute('animation-rectangle') - b.getAttribute('animation-rectangle')
-      );
-      const body = document.body;
-
-      // Stany początkowe
-      gsap.set(heroImg, { scale: 2, filter: 'blur(5px)', zIndex: 999, transformOrigin: "center center" });
-      if (heroText) gsap.set(heroText, { filter: 'blur(5px)', opacity: 0 });
-      if (heroButton) gsap.set(heroButton, { x: 40, opacity: 0 });
-      if (heroCaption) gsap.set(heroCaption, { yPercent: -20, opacity: 0 });
-      if (rectangles.length > 0) gsap.set(rectangles, { opacity: 0, scale: 0.5, transformOrigin: "center center" });
-
-      // Timeline
-      const tl = gsap.timeline({
-        delay: 0.5,
-        onComplete: () => {
-          // Zdejmij blokady scrolla
-          window.isLoaderRunning = false;
-          window.removeEventListener('wheel', preventScrollEvents);
-          window.removeEventListener('touchmove', preventScrollEvents);
-          
-          body.style.overflow = 'hidden'; // Chwilowe ukrycie paska, żeby nie mignął
-          
-          setTimeout(() => {
-            body.style.overflow = '';
-            // Wymuszenie odświeżenia ScrollTriggera po odblokowaniu strony
-            ScrollTrigger.refresh();
-            window.dispatchEvent(new Event('resize'));
-          }, 50);
-        }
-      });
-
-      // Sekwencja animacji
-      if (rectangles.length > 0) {
-        tl.to(rectangles, { opacity: 1, scale: 1, duration: 0.8, stagger: 0.2, ease: "power2.out" }, 0.2);
-      }
-      tl.to(heroImg, { scale: 1, filter: 'blur(0px)', duration: 1.8, ease: "power2.inOut" }, 0.5);
-      
-      if (heroCaption) tl.to(heroCaption, { yPercent: 0, opacity: 1, duration: 1, ease: "power2.out" }, 1.8);
-      if (heroText) tl.to(heroText, { filter: 'blur(0px)', opacity: 1, duration: 1.2, ease: "power2.out" }, 2.0);
-      if (heroButton) tl.to(heroButton, { x: 0, opacity: 1, duration: 1.2, ease: "power2.out" }, 2.2);
-    }
-
-    // B. NAVIGATION (Fixed hide/show + Active States + Hover)
-    function initNavigationLogic() {
-      // 1. Chowanie nawigacji przy scrollu
-      const nav = document.querySelector('.nav_fixed');
-      if (nav) {
-        const defaultBottom = getComputedStyle(nav).bottom;
-        const hiddenBottom = `-${nav.offsetHeight + 20}px`;
-        let lastScrollY = window.scrollY;
-        let ticking = false;
-
-        window.addEventListener('scroll', () => {
-          if (!ticking) {
-            window.requestAnimationFrame(() => {
-              const currentY = window.scrollY;
-              // Chowaj tylko jak scroll > 2px różnicy
-              if (currentY > lastScrollY + 2) nav.style.bottom = hiddenBottom;
-              else if (currentY < lastScrollY - 2) nav.style.bottom = defaultBottom;
-              lastScrollY = currentY;
-              ticking = false;
-            });
-            ticking = true;
-          }
-        }, { passive: true });
-        
-        nav.style.transition = 'bottom 0.7s cubic-bezier(0.7,0,0.2,1)';
-        nav.style.bottom = defaultBottom;
-      }
-
-      // 2. Active States & Hover (Floating Background)
-      const navLinks = Array.from(document.querySelectorAll('.link-block'));
-      if (navLinks.length === 0) return;
-
-      const navContainer = navLinks[0].parentElement;
-      const sections = navLinks.map(a => {
-        const id = a.getAttribute('href');
-        return (id && id.startsWith('#')) ? document.querySelector(id) : null;
-      }).filter(el => !!el);
-
-      let activeIndex = 0;   
-      let visualIndex = 0;   
-      let isClicking = false;
-      let isHovering = false; 
-
-      // Init background
-      const initialBg = navLinks[0].querySelector('.nav-bg');
-      if (initialBg) gsap.set(initialBg, { xPercent: 0, opacity: 1 });
-      navLinks[0].classList.add("link-bg-color");
-      navLinks.forEach((link, i) => {
-        if (i !== 0) {
-          const bg = link.querySelector('.nav-bg');
-          if (bg) gsap.set(bg, { opacity: 0 });
-        }
-      });
-
-      function moveBgTo(targetIndex) {
-        if (targetIndex === visualIndex || !navLinks[targetIndex]) return;
-        
-        const direction = targetIndex > visualIndex ? 'right' : 'left';
-        const exitTo = direction === 'right' ? 100 : -100;
-        const enterFrom = direction === 'right' ? -100 : 100;
-
-        // Old Link
-        const oldLink = navLinks[visualIndex];
-        const oldBg = oldLink.querySelector('.nav-bg');
-        oldLink.classList.remove("link-bg-color");
-        if(oldBg) gsap.to(oldBg, { xPercent: exitTo, opacity: 0, duration: 0.4, ease: "power2.inOut", overwrite: true });
-
-        // New Link
-        const newLink = navLinks[targetIndex];
-        const newBg = newLink.querySelector('.nav-bg');
-        newLink.classList.add("link-bg-color");
-        if(newBg) gsap.fromTo(newBg, { xPercent: enterFrom, opacity: 1 }, { xPercent: 0, opacity: 1, duration: 0.4, ease: "power2.inOut", overwrite: true });
-
-        visualIndex = targetIndex;
-      }
-
-      function updateActiveOnScroll() {
-  let foundIndex = -1;
-  const triggerLine = window.innerHeight * 0.3;
-
-  sections.forEach((sec, i) => {
-    const rect = sec.getBoundingClientRect();
-    if (rect.top <= triggerLine) foundIndex = i;
-  });
-
-  if (foundIndex === -1 && window.scrollY < 100) foundIndex = 0;
-
-  if (foundIndex !== -1 && foundIndex !== activeIndex) {
-    activeIndex = foundIndex;
-
-    if (!isHovering && !isClicking) {
-      moveBgTo(activeIndex);
-    }
+function preventScrollEvents(e) {
+  if (window.isLoaderRunning) {
+    if (e.cancelable) e.preventDefault();
+    return false;
   }
 }
 
-      // Event Listeners dla nawigacji
-      navLinks.forEach((link, i) => {
-        // Click
-        link.addEventListener("click", e => {
-          e.preventDefault();
-          const targetId = link.getAttribute('href');
-          const targetSec = document.querySelector(targetId);
-          if (targetSec) {
-            isClicking = true;
-            activeIndex = i;
-            moveBgTo(i);
-            gsap.to(window, {
-  duration: 1.2,
-  scrollTo: targetSec,
-  ease: "power2.inOut",
-  onComplete: () => {
-    isClicking = false;
+function forceScrollTop() {
+  if (window.isLoaderRunning) {
+    if (!document.hidden) {
+      window.scrollTo(0, 0);
+      if (window.lenis) window.lenis.scrollTo(0, { immediate: true });
+    }
+    requestAnimationFrame(forceScrollTop);
   }
-});
-          }
-        });
-        // Hover
-        link.addEventListener("mouseenter", () => {
-          if (isClicking) return;
-          isHovering = true;
-          moveBgTo(i);
-        });
-      });
+}
 
-      if (navContainer) {
-        navContainer.addEventListener("mouseleave", () => {
-          if (isClicking) return;
-          isHovering = false;
-          moveBgTo(activeIndex); 
-        });
-      }
-      window.addEventListener('scroll', updateActiveOnScroll, { passive: true });
+window.addEventListener("wheel", preventScrollEvents, { passive: false });
+window.addEventListener("touchmove", preventScrollEvents, { passive: false });
+requestAnimationFrame(forceScrollTop);
+
+// ---  INICJALIZACJA LENIS ---
+if (Webflow.env("editor") === undefined) {
+  window.lenis = new Lenis({
+    lerp: 0.8,
+    wheelMultiplier: 0.8,
+    infinite: false,
+    gestureOrientation: "vertical",
+    normalizeWheel: false,
+    smoothTouch: false,
+  });
+
+  window.lenis.stop();
+  window.lenis.scrollTo(0, { immediate: true });
+
+  // Synchronizacja z GSAP
+  window.lenis.on("scroll", ScrollTrigger.update);
+  gsap.ticker.add((time) => {
+    if (window.lenis) window.lenis.raf(time * 1000);
+  });
+}
+
+// --- GŁÓWNA INICJALIZACJA PO DOM ---
+document.addEventListener("DOMContentLoaded", function () {
+  gsap.registerPlugin(ScrollTrigger);
+
+  initHeroAnimation();
+  initNavigationLogic();
+
+  function initHeroAnimation() {
+    // Sprawdzamy, czy jesteśmy na Mobile Portrait (poniżej 480px)
+    const isMobilePortrait = window.matchMedia("(max-width: 479px)").matches;
+
+    // Wybieramy odpowiednie zdjęcie: .is-mobile dla telefonu, lub :not(.is-mobile) dla reszty
+    const heroImg = isMobilePortrait
+      ? document.querySelector(".img-hero.is-mobile")
+      : document.querySelector(".img-hero:not(.is-mobile)");
+
+    const heroText = document.querySelector('[animation-data="text-hero"]');
+    const heroButton = document.querySelector('[animation-data="button"]');
+    const heroCaption = document.querySelector('[animation-data="caption"]');
+    const rectangles = gsap.utils
+      .toArray("[animation-rectangle]")
+      .sort(
+        (a, b) =>
+          a.getAttribute("animation-rectangle") -
+          b.getAttribute("animation-rectangle")
+      );
+
+    // Stany początkowe dla wybranego heroImg - skala 3 na mobile portrait
+    if (heroImg) {
+      gsap.set(heroImg, {
+        scale: isMobilePortrait ? 3 : 2,
+        filter: "blur(5px)",
+        zIndex: 100,
+        transformOrigin: "center center",
+      });
     }
 
-    // C. PORTFOLIO BLOCKS (Orange & Width animations)
-function initPortfolioAnimations() {
-  if (!window.matchMedia("(min-width: 768px)").matches) return;
-
-  gsap.utils.toArray("[data-animation='true']").forEach(element => {
-    const prevElement = element.previousElementSibling; 
-    const captionWrapper = element.querySelector('.caption-wrapper');
-    const orangeBg = element.querySelector('.block-bg-orange');
+    if (heroText) gsap.set(heroText, { filter: "blur(5px)", opacity: 0 });
+    if (heroButton) gsap.set(heroButton, { x: 40, opacity: 0 });
+    if (heroCaption) gsap.set(heroCaption, { yPercent: -20, opacity: 0 });
+    if (rectangles.length > 0)
+      gsap.set(rectangles, {
+        opacity: 0,
+        scale: 0.5,
+        transformOrigin: "center center",
+      });
 
     const tl = gsap.timeline({
-      scrollTrigger: {
-        trigger: element,
-        start: "top bottom",
-        end: "top 20%",
-        scrub: true,           // To daje płynność (wygładzanie ruchu)
-        markers: false
-      }
-    });
-
-    // 1. Szerokość całego bloku (kończy na 1.0)
-    tl.fromTo(element, 
-      { width: "82%" }, 
-      { width: "100%", duration: 1, ease: "none" }, 0);
-
-    // 2. Zaciemnianie poprzedniego bloku (kończy na 1.0)
-    if (prevElement && prevElement.classList.contains('portfolio-block')) {
-      const bgElement = prevElement.querySelector('.bg-black');
-      if (bgElement) {
-        tl.fromTo(bgElement, 
-          { backgroundColor: "rgba(0,0,0,0)" }, 
-          { backgroundColor: "rgba(0,0,0,0.75)", duration: 1, ease: "none" }, 0);
-      }
-    }
-
-    // 3. Caption (pojawia się w połowie drogi)
-    if (captionWrapper) {
-      tl.fromTo(captionWrapper, 
-        { filter: "blur(20px)", opacity: 0 }, 
-        { filter: "blur(0px)", opacity: 1, duration: 0.5 }, 0.4);
-    }
-    
-    // 4. Pomarańczowe tło (RYSOWANIE ZE ŚRODKA - naprawione)
-    if (orangeBg) {
-      tl.fromTo(orangeBg, 
-        { scaleX: 0 }, 
-        { 
-          scaleX: 1, 
-          transformOrigin: "center center", // To wymusza rysowanie od środka
-          duration: 0.6, 
-          ease: "power2.out" 
-        }, 0.6); // Startuje nieco później, kończy na 1.0
-    }
-    
-    // 5. Teksty
-    const textElements = element.querySelectorAll('[data-animation="text"]');
-    textElements.forEach(textElement => {
-      tl.fromTo(textElement, 
-        { filter: "blur(20px)", opacity: 0 }, 
-        { filter: "blur(0px)", opacity: 1, duration: 0.3 }, 0.8);
-    });
-  });
-}
-    // D. MAIN SLIDERS (Services / Team etc.)
-    function initSliders() {
-      function animateContent(activeBlock) {
-        if (!activeBlock) return;
-        const titles = activeBlock.querySelectorAll('.font-size-link, .heading-style-h4');
-        const bodies = activeBlock.querySelectorAll('.list-block, .text-caption');
-        const dividers = activeBlock.querySelectorAll('.divider');
-
-        gsap.set([titles, bodies], { opacity: 0, y: 10, filter: "blur(10px)" });
-        gsap.set(dividers, { scaleX: 0, opacity: 1 });
-
-        const tl = gsap.timeline({ defaults: { ease: "power3.out", duration: 1.2 } });
-        tl.to(titles, { opacity: 1, y: 0, filter: "blur(0px)", stagger: 0.2 })
-          .to(bodies, { opacity: 1, y: 0, filter: "blur(0px)", stagger: 0.15 }, "-=0.8")
-          .to(dividers, { scaleX: 1, duration: 2.0, stagger: 0.2 }, "-=2.0");
-      }
-
-      document.querySelectorAll('[data-slider-group]').forEach(group => {
-        const texts = group.querySelectorAll('.slider-text');
-        const inner = group.querySelector('.slider-inner');
-        const connects = group.querySelectorAll('[slider-connect]');
-        const blocks = group.querySelectorAll('.slider-block, .slider-block-services');
-
-        function goTo(slide, isFirstLoad = false) {
-          if (inner && blocks.length > 0) {
-            const style = getComputedStyle(inner);
-            const gap = parseFloat(style.columnGap || style.gap) || 0;
-            const slideWidth = blocks[0].offsetWidth;
-            const moveX = -slide * (slideWidth + gap);
-
-            gsap.to(inner, {
-              x: moveX,
-              duration: 0.1,
-              ease: "power1.inOut",
-              onComplete: () => { if (!isFirstLoad) animateContent(blocks[slide]); }
-            });
-          }
-
-          texts.forEach((text, i) => i === slide ? text.classList.remove('font-opacity-25') : text.classList.add('font-opacity-25'));
-          connects.forEach((el) => {
-            const targetSlide = parseInt(el.getAttribute('slider-connect'));
-            if (targetSlide === slide) el.classList.remove('font-color-opacity');
-            else el.classList.add('font-color-opacity');
-          });
-
-          if (isFirstLoad) animateContent(blocks[slide]);
+      // Zmniejszony delay na mobile, żeby użytkownik nie patrzył na "zamrożony" ekran
+      delay: isMobilePortrait ? 0.2 : 0.5,
+      onComplete: () => {
+        window.isLoaderRunning = false;
+        if (typeof preventScrollEvents === "function") {
+          window.removeEventListener("wheel", preventScrollEvents);
+          window.removeEventListener("touchmove", preventScrollEvents);
         }
 
-        ScrollTrigger.create({
-          trigger: group,
-          start: "top 75%",
-          onEnter: () => goTo(0, true),
-          once: true
+        document.documentElement.style.overflow = "";
+        document.body.style.overflow = "";
+
+        if (window.lenis) {
+          window.lenis.start();
+          window.lenis.scrollTo(0, { immediate: true });
+        }
+
+        window.scrollTo(0, 0);
+
+        if (typeof initPortfolioAnimations === "function")
+          initPortfolioAnimations();
+        if (typeof initSliders === "function") initSliders();
+        if (typeof initTestimonials === "function") initTestimonials();
+        if (typeof initGeneralAnimations === "function")
+          initGeneralAnimations();
+        if (typeof initPopup === "function") initPopup();
+        if (typeof initButtonColorLogic === "function") initButtonColorLogic();
+        if (typeof initFormAnimations === "function") initFormAnimations();
+
+        setTimeout(() => {
+          ScrollTrigger.refresh();
+        }, 150);
+      },
+    });
+
+    // Animacja Hero
+    if (rectangles.length > 0) {
+      tl.to(
+        rectangles,
+        {
+          opacity: 1,
+          zIndex: 101,
+          scale: 1,
+          duration: 0.6,
+          // Zagęszczony stagger na mobile, żeby szybciej przeszło do zdjęcia
+          stagger: isMobilePortrait ? 0.1 : 0.2,
+          ease: "power2.out",
+        },
+        0
+      );
+    }
+
+    if (heroImg) {
+      tl.to(
+        heroImg,
+        { scale: 1, filter: "blur(0px)", duration: 1.8, ease: "power2.inOut" },
+        // Na mobile zaczynamy animację zdjęcia wcześniej, by skrócić czas oczekiwania
+        isMobilePortrait ? 0.3 : 0.5
+      );
+    }
+
+    if (heroCaption)
+      tl.to(
+        heroCaption,
+        { yPercent: 0, opacity: 1, duration: 1, ease: "power2.out" },
+        1.8
+      );
+    if (heroText)
+      tl.to(
+        heroText,
+        { filter: "blur(0px)", opacity: 1, duration: 1.2, ease: "power2.out" },
+        2.0
+      );
+    if (heroButton)
+      tl.to(
+        heroButton,
+        { x: 0, opacity: 1, duration: 1.2, ease: "power2.out" },
+        2.2
+      );
+  }
+
+  // B. NAVIGATION (Fixed hide/show + Active States + Hover)
+  function initNavigationLogic() {
+    const nav = document.querySelector(".nav_fixed");
+    const navLinks = Array.from(document.querySelectorAll(".link-block"));
+    if (navLinks.length === 0) return;
+
+    const navContainer = navLinks[0].parentElement;
+    const sections = navLinks
+      .map((a) => {
+        const id = a.getAttribute("href");
+        return id && id.startsWith("#") ? document.querySelector(id) : null;
+      })
+      .filter((el) => !!el);
+
+    let activeIndex = 0;
+    let visualIndex = 0;
+    let isClicking = false;
+    let isHovering = false;
+
+    // Show / hidde menu
+    if (nav) {
+      const defaultBottom = getComputedStyle(nav).bottom;
+      const hiddenBottom = `-${nav.offsetHeight + 40}px`;
+      let lastScrollY = window.scrollY;
+
+      window.addEventListener(
+        "scroll",
+        () => {
+          const currentY = window.scrollY;
+          if (currentY < 150) {
+            nav.style.bottom = defaultBottom;
+          } else {
+            if (currentY > lastScrollY + 10) nav.style.bottom = hiddenBottom;
+            else if (currentY < lastScrollY - 10)
+              nav.style.bottom = defaultBottom;
+          }
+          lastScrollY = currentY;
+        },
+        { passive: true }
+      );
+      nav.style.transition = "bottom 1.8s cubic-bezier(0.7,0,0.2,1)";
+    }
+
+    // 2. Silnik przesuwania tła
+    function moveBgTo(targetIndex) {
+      if (!navLinks[targetIndex]) return;
+
+      const oldLink = navLinks[visualIndex];
+      const newLink = navLinks[targetIndex];
+      const oldBg = oldLink.querySelector(".nav-bg");
+      const newBg = newLink.querySelector(".nav-bg");
+
+      if (visualIndex !== targetIndex) {
+        const direction = targetIndex > visualIndex ? 100 : -100;
+
+        oldLink.classList.remove("link-bg-color");
+        if (oldBg)
+          gsap.to(oldBg, {
+            xPercent: direction,
+            opacity: 0,
+            duration: 0.4,
+            ease: "power2.inOut",
+            overwrite: true,
+          });
+
+        newLink.classList.add("link-bg-color");
+        if (newBg)
+          gsap.fromTo(
+            newBg,
+            { xPercent: -direction, opacity: 1 },
+            {
+              xPercent: 0,
+              opacity: 1,
+              duration: 0.4,
+              ease: "power2.inOut",
+              overwrite: true,
+            }
+          );
+
+        visualIndex = targetIndex;
+      } else {
+        newLink.classList.add("link-bg-color");
+        if (newBg)
+          gsap.to(newBg, {
+            xPercent: 0,
+            opacity: 1,
+            duration: 0.2,
+            overwrite: true,
+          });
+      }
+    }
+
+    // 3. Scroll
+    function updateActiveOnScroll() {
+      if (isClicking) return;
+
+      let foundIndex = -1;
+      const scrollBottom = window.innerHeight + window.scrollY;
+      const pageHeight = document.documentElement.scrollHeight;
+
+      if (scrollBottom >= pageHeight - 150) {
+        foundIndex = sections.length - 1;
+      } else {
+        let maxVisibleHeight = 0;
+        sections.forEach((sec, i) => {
+          const rect = sec.getBoundingClientRect();
+          const visibleHeight =
+            Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+
+          if (visibleHeight > 100 && visibleHeight > maxVisibleHeight) {
+            maxVisibleHeight = visibleHeight;
+            foundIndex = i;
+          }
+        });
+      }
+
+      // AKTUALIZACJA
+      if (foundIndex !== -1 && foundIndex !== activeIndex) {
+        activeIndex = foundIndex;
+        if (!isHovering) moveBgTo(activeIndex);
+      }
+    }
+
+    // Obsługa Kliknięć
+    navLinks.forEach((link, i) => {
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        const targetId = link.getAttribute("href");
+        const targetSec = document.querySelector(targetId);
+
+        if (targetSec) {
+          isClicking = true;
+          activeIndex = i;
+          moveBgTo(i);
+
+          const unlock = () => {
+            isClicking = false;
+            updateActiveOnScroll();
+          };
+
+          setTimeout(unlock, 1600);
+
+          if (window.lenis) {
+            window.lenis.scrollTo(targetSec, {
+              duration: 1.2,
+              onComplete: unlock,
+            });
+          } else {
+            gsap.to(window, {
+              scrollTo: targetSec,
+              duration: 1.2,
+              ease: "power2.inOut",
+              onComplete: unlock,
+            });
+          }
+        }
+      });
+
+      link.addEventListener("mouseenter", () => {
+        if (isClicking) return;
+        isHovering = true;
+        moveBgTo(i);
+      });
+    });
+
+    if (navContainer) {
+      navContainer.addEventListener("mouseleave", () => {
+        isHovering = false;
+        if (!isClicking) moveBgTo(activeIndex);
+      });
+    }
+
+    // Inicjalizacja tła
+    const initialBg = navLinks[0].querySelector(".nav-bg");
+    if (initialBg) gsap.set(initialBg, { xPercent: 0, opacity: 1 });
+    navLinks[0].classList.add("link-bg-color");
+
+    window.addEventListener("scroll", updateActiveOnScroll, { passive: true });
+    setTimeout(updateActiveOnScroll, 300);
+  }
+  // C. PORTFOLIO BLOCKS
+  function initPortfolioAnimations() {
+    if (!window.matchMedia("(min-width: 768px)").matches) return;
+
+    gsap.utils.toArray("[data-animation='true']").forEach((element) => {
+      const prevElement = element.previousElementSibling;
+      const captionWrapper = element.querySelector(".caption-wrapper");
+      const orangeBg = element.querySelector(".block-bg-orange");
+
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: element,
+          start: "top bottom",
+          end: "top 10%",
+          scrub: true,
+          markers: false,
+        },
+      });
+
+      // Szerokość
+      tl.fromTo(
+        element,
+        { width: "82%" },
+        { width: "100%", duration: 1, ease: "none" },
+        0
+      );
+
+      // 2. Zaciemnianie poprzedniego
+      if (prevElement && prevElement.classList.contains("portfolio-block")) {
+        const bgElement = prevElement.querySelector(".bg-black");
+        if (bgElement) {
+          tl.fromTo(
+            bgElement,
+            { backgroundColor: "rgba(0,0,0,0)" },
+            { backgroundColor: "rgba(0,0,0,0.75)", duration: 1, ease: "none" },
+            0
+          );
+        }
+      }
+
+      if (captionWrapper) {
+        tl.fromTo(
+          captionWrapper,
+          { filter: "blur(20px)", opacity: 0 },
+          {
+            filter: "blur(0px)",
+            opacity: 1,
+            duration: 0.5,
+            ease: "power1.out",
+          },
+          0.4
+        );
+      }
+
+      if (orangeBg) {
+        tl.fromTo(
+          orangeBg,
+          { scaleX: 0 },
+          {
+            scaleX: 1,
+            transformOrigin: "center center",
+            duration: 0.5,
+            ease: "power2.inOut",
+          },
+          0.5
+        );
+      }
+
+      const textElements = element.querySelectorAll('[data-animation="text"]');
+      textElements.forEach((textElement) => {
+        tl.fromTo(
+          textElement,
+          { filter: "blur(20px)", opacity: 0 },
+          { filter: "blur(0px)", opacity: 1, duration: 0.3, ease: "none" },
+          0.7
+        );
+      });
+    });
+  }
+  // D. MAIN SLIDERS (Services / Team)
+  function initSliders() {
+    function animateContent(activeBlock) {
+      if (!activeBlock) return;
+
+      // Pobieramy elementy TYLKO wewnątrz aktywnego bloku
+      const titles = activeBlock.querySelectorAll(
+        ".font-size-link, .heading-style-h4"
+      );
+      const bodies = activeBlock.querySelectorAll(".list-block, .text-caption");
+      const dividers = activeBlock.querySelectorAll(".divider");
+      const socials = activeBlock.querySelectorAll(".social-link-block");
+
+      const tl = gsap.timeline({
+        defaults: { ease: "power3.out", duration: 1.2 },
+      });
+
+      // Tytuły i Teksty (Reset i Animacja)
+      if (titles.length || bodies.length) {
+        gsap.set([titles, bodies], { opacity: 0, y: 10, filter: "blur(10px)" });
+        tl.to(
+          titles,
+          { opacity: 1, y: 0, filter: "blur(0px)", stagger: 0.2 },
+          0
+        ).to(
+          bodies,
+          { opacity: 1, y: 0, filter: "blur(0px)", stagger: 0.15 },
+          "-=0.8"
+        );
+      }
+
+      // Dividery (Reset i Animacja)
+      if (dividers.length) {
+        gsap.set(dividers, { scaleX: 0, opacity: 1 });
+        tl.to(dividers, { scaleX: 1, duration: 2.0, stagger: 0.2 }, "-=2.0");
+      }
+
+      // Social Media (Reset i Animacja)
+      if (socials.length) {
+        gsap.set(socials, {
+          opacity: 0,
+          y: 10,
+          filter: "blur(5px)",
         });
 
-        texts.forEach((text, i) => text.addEventListener('click', () => goTo(i)));
-        gsap.set([inner], { x: 0 });
+        tl.to(
+          socials,
+          {
+            opacity: 1,
+            y: 0,
+            filter: "blur(0px)",
+            duration: 0.8,
+            stagger: 0.2,
+            ease: "power2.out",
+          },
+          "-=1.2"
+        );
+      }
+    }
+
+    document.querySelectorAll("[data-slider-group]").forEach((group) => {
+      const texts = group.querySelectorAll(".slider-text");
+      const inner = group.querySelector(".slider-inner");
+      const connects = group.querySelectorAll("[slider-connect]");
+      const blocks = group.querySelectorAll(
+        ".slider-block, .slider-block-services"
+      );
+
+      if (!inner || blocks.length === 0) return;
+
+      function goTo(slide, isFirstLoad = false) {
+        const targetBlock = blocks[slide];
+        if (!targetBlock) return;
+
+        const style = getComputedStyle(inner);
+        const gap = parseFloat(style.columnGap || style.gap) || 0;
+        const slideWidth = targetBlock.offsetWidth;
+        const moveX = -slide * (slideWidth + gap);
+
+        gsap.to(inner, {
+          x: moveX,
+          duration: 0,
+          ease: "power2.inOut",
+          onComplete: () => {
+            if (!isFirstLoad) animateContent(targetBlock);
+          },
+        });
+
+        // Obsługa stanów aktywnych tekstu
+        texts.forEach((text, i) =>
+          i === slide
+            ? text.classList.remove("font-opacity-25")
+            : text.classList.add("font-opacity-25")
+        );
+
+        connects.forEach((el) => {
+          const targetSlide = parseInt(el.getAttribute("slider-connect"));
+          if (targetSlide === slide) el.classList.remove("font-color-opacity");
+          else el.classList.add("font-color-opacity");
+        });
+
+        if (isFirstLoad) animateContent(targetBlock);
+      }
+
+      // Inicjalizacja przy wejściu w sekcję
+      ScrollTrigger.create({
+        trigger: group,
+        start: "top 75%",
+        onEnter: () => goTo(0, true),
+        once: true,
+      });
+
+      texts.forEach((text, i) => text.addEventListener("click", () => goTo(i)));
+
+      // Reset pozycji startowej
+      gsap.set(inner, { x: 0 });
+    });
+  }
+
+  // E. TESTIMONIAL SLIDER
+  function initTestimonials() {
+    const wrapper = document.querySelector(".testimonial-wrapper");
+    if (!wrapper) return;
+    const slides = wrapper.querySelectorAll(".testimonial-slide");
+    const prevArrow = document.querySelector(".testimonial-arrow--prev");
+    const nextArrow = document.querySelector(".testimonial-arrow--next");
+    let current = 0;
+
+    // STAN POCZĄTKOWY
+    gsap.set(slides, { filter: "blur(5px)", opacity: 0.4 });
+
+    function updateSlider() {
+      const style = getComputedStyle(wrapper);
+      const slidesToShow =
+        parseInt(style.getPropertyValue("--_slider---quantity")) || 1;
+      const slideCount = slides.length;
+      const maxIndex = Math.max(0, slideCount - slidesToShow);
+      const gap = 1.375;
+
+      if (current < 0) current = 0;
+      if (current > maxIndex) current = maxIndex;
+
+      // OBLICZENIA RUCHU
+      const movePercent = -(100 / slidesToShow) * current;
+      const moveGap = -(gap / slidesToShow) * current;
+
+      // ANIMACJA RUCHU WRAPPERA
+      gsap.to(wrapper, {
+        xPercent: movePercent,
+        x: moveGap + "rem",
+        duration: 1.2,
+        ease: "power2.inOut",
+        overwrite: true,
+      });
+
+      // ANIMACJA BLURU DLA KAŻDEGO SLAJDU
+      slides.forEach((slide, index) => {
+        const isVisible = index >= current && index < current + slidesToShow;
+
+        gsap.to(slide, {
+          filter: isVisible ? "blur(0px)" : "blur(5px)",
+          opacity: isVisible ? 1 : 0.4,
+          duration: 1.2,
+          ease: "power1.inOut",
+        });
+      });
+
+      // Aktualizacja strzałek
+      if (prevArrow) prevArrow.classList.toggle("is-active", current > 0);
+      if (nextArrow)
+        nextArrow.classList.toggle("is-active", current < maxIndex);
+    }
+
+    // EVENT LISTENERS
+    if (prevArrow) {
+      prevArrow.addEventListener("click", () => {
+        current--;
+        updateSlider();
+      });
+    }
+    if (nextArrow) {
+      nextArrow.addEventListener("click", () => {
+        current++;
+        updateSlider();
       });
     }
 
-    // E. TESTIMONIAL SLIDER
-    function initTestimonials() {
-      const wrapper = document.querySelector('.testimonial-wrapper');
-      if(!wrapper) return;
-      const slides = wrapper.querySelectorAll('.testimonial-slide');
-      const prevArrow = document.querySelector('.testimonial-arrow--prev');
-      const nextArrow = document.querySelector('.testimonial-arrow--next');
-      let current = 0;
-
-      function updateSlider() {
-        const slidesToShow = parseInt(getComputedStyle(wrapper).getPropertyValue('--_slider---quantity')) || 1; // Fallback to 1
-        const slideCount = slides.length;
-        const maxIndex = Math.max(0, slideCount - slidesToShow);
-        const gap = 1.375; 
-
-        if (current < 0) current = 0;
-        if (current > maxIndex) current = maxIndex;
-
-        const percentagePart = (100 / slidesToShow) * current;
-        const gapPart = (gap / slidesToShow) * current;
-        wrapper.style.transform = `translateX(calc(-${percentagePart}% - ${gapPart}rem))`;
-
-        if (prevArrow) prevArrow.classList.toggle('is-active', current > 0);
-        if (nextArrow) nextArrow.classList.toggle('is-active', current < maxIndex);
-      }
-
-      if (prevArrow) prevArrow.addEventListener('click', () => { current--; updateSlider(); });
-      if (nextArrow) nextArrow.addEventListener('click', () => { current++; updateSlider(); });
-      window.addEventListener('resize', updateSlider);
+    window.addEventListener("resize", () => {
+      // Przy resize nie animujemy, tylko przeskakujemy do poprawnej pozycji
       updateSlider();
+    });
+
+    // Pierwsze wywołanie ustawiające pozycję startową
+    updateSlider();
+  }
+
+  // F. GENERAL ANIMATIONS (Text & Offers)
+  function initGeneralAnimations() {
+    // Text Animation
+    const textElements = document.querySelectorAll('[text-animation="true"]');
+    textElements.forEach((el) => {
+      gsap.fromTo(
+        el,
+        { y: 20, filter: "blur(5px)", opacity: 0 },
+        {
+          y: 0,
+          filter: "blur(0px)",
+          opacity: 1,
+          duration: 1.6,
+          ease: "expoScale(0.5,7,none)",
+          scrollTrigger: {
+            trigger: el,
+            start: "top 80%",
+            toggleActions: "play none none none",
+          },
+        }
+      );
+    });
+
+    // Offer Animation
+    const offerElements = document.querySelectorAll("[data-offer]");
+    if (offerElements.length > 0) {
+      const sortedOffers = Array.from(offerElements).sort(
+        (a, b) => a.getAttribute("data-offer") - b.getAttribute("data-offer")
+      );
+      gsap.fromTo(
+        sortedOffers,
+        { opacity: 0, y: 40, filter: "blur(5px)" },
+        {
+          opacity: 1,
+          y: 0,
+          filter: "blur(0px)",
+          duration: 1.6,
+          stagger: 0.4,
+          ease: "power2.out",
+          scrollTrigger: {
+            trigger: ".padding-top-6",
+            start: "top 80%",
+            toggleActions: "play none none none",
+          },
+        }
+      );
     }
+  }
 
-    // F. GENERAL ANIMATIONS (Text & Offers)
-    function initGeneralAnimations() {
-      // 1. Text Animation
-      const textElements = document.querySelectorAll('[text-animation="true"]');
-      textElements.forEach((el) => {
-        gsap.fromTo(el, 
-          { y: 20, filter: 'blur(5px)', opacity: 0 },
-          { y: 0, filter: 'blur(0px)', opacity: 1, duration: 1.6, ease: "expoScale(0.5,7,none)", 
-            scrollTrigger: { trigger: el, start: "top 80%", toggleActions: "play none none none" }
-          }
+  // G. POPUP LOGIC
+  function initPopup() {
+    const openBtns = document.querySelectorAll('[data-popup="open"]');
+    const closeBtn = document.querySelector('[data-popup="close"]');
+    const section = document.querySelector('[data-popup="section"]');
+    const popupBlock = document.querySelector('[data-popup="block"]');
+    const form = document.querySelector('[data-popup="form"]');
+    const heroBtn = document.querySelector('[animation-data="button"]');
+
+    if (!section || openBtns.length === 0) return;
+
+    gsap.set(section, { display: "none", opacity: 0 });
+    gsap.set([closeBtn, popupBlock], {
+      x: 80,
+      opacity: 0,
+      filter: "blur(10px)",
+    });
+
+    const openPopup = (clickedBtn) => {
+      if (window.lenis) window.lenis.stop();
+      const tl = gsap.timeline();
+      tl.to([clickedBtn, heroBtn], {
+        opacity: 0,
+        duration: 0.3,
+        ease: "power2.inOut",
+        delay: 0,
+      })
+        .set(section, { display: "flex" })
+        .to(section, { opacity: 1, duration: 0.5, ease: "power2.out" }, "-=0.5")
+        .to(
+          [popupBlock, closeBtn],
+          {
+            x: 0,
+            opacity: 1,
+            filter: "blur(0px)",
+            duration: 0.8,
+            stagger: 0.1,
+            ease: "power3.out",
+          },
+          "-=0.2"
         );
+    };
+
+    const closePopup = () => {
+      const tl = gsap.timeline({
+        onComplete: () => {
+          gsap.set(section, { display: "none" });
+          if (window.lenis) window.lenis.start();
+        },
       });
+      tl.to([closeBtn, popupBlock], {
+        x: 50,
+        opacity: 0,
+        filter: "blur(10px)",
+        duration: 0.4,
+        stagger: -0.1,
+        ease: "power2.in",
+      })
+        .to(section, { opacity: 0, duration: 0.3 })
+        .to([openBtns, heroBtn], { opacity: 1, duration: 0.4 }, "-=0.2");
+    };
 
-      // 2. Offer Animation
-      const offerElements = document.querySelectorAll('[data-offer]');
-      if (offerElements.length > 0) {
-        const sortedOffers = Array.from(offerElements).sort((a, b) => a.getAttribute('data-offer') - b.getAttribute('data-offer'));
-        gsap.fromTo(sortedOffers, 
-          { opacity: 0, y: 40, filter: "blur(5px)" },
-          { opacity: 1, y: 0, filter: "blur(0px)", duration: 1.6, stagger: 0.4, ease: "power2.out",
-            scrollTrigger: { trigger: ".padding-top-6", start: "top 80%", toggleActions: "play none none none" }
-          }
-        );
+    openBtns.forEach((btn) => {
+      btn.addEventListener("click", () => openPopup(btn));
+    });
+
+    if (closeBtn) closeBtn.addEventListener("click", closePopup);
+
+    if (form) {
+      const formWrapper = form.closest(".w-form");
+      if (formWrapper) {
+        const successMessage = formWrapper.querySelector(".w-form-done");
+        if (successMessage) {
+          const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+              const isVisible =
+                window.getComputedStyle(successMessage).display !== "none";
+              if (isVisible) {
+                setTimeout(closePopup, 1000);
+                observer.disconnect();
+              }
+            });
+          });
+          observer.observe(successMessage, {
+            attributes: true,
+            attributeFilter: ["style", "class"],
+          });
+        }
       }
     }
-  });
+
+    section.addEventListener("click", (e) => {
+      if (e.target === section) closePopup();
+    });
+  }
+  // H. BUTTON COLOR CHANGE ON SCROLL
+  function initButtonColorLogic() {
+    const fixedBtn = document.querySelector('[button-color="section"]');
+    const triggerSection = document.querySelector("#section_portfolio");
+
+    if (!fixedBtn || !triggerSection) return;
+
+    const activeColor = "#fff9f5";
+    const defaultColor = "rgba(230, 213, 201, 0.2)";
+
+    ScrollTrigger.create({
+      trigger: triggerSection,
+      start: "top 10%",
+      onEnter: () =>
+        gsap.to(fixedBtn, {
+          backgroundColor: activeColor,
+          duration: 0.4,
+          ease: "power2.out",
+        }),
+
+      onLeaveBack: () =>
+        gsap.to(fixedBtn, {
+          backgroundColor: defaultColor,
+          duration: 0.4,
+          ease: "power2.out",
+        }),
+    });
+  }
+  function initFormAnimations() {
+    const fields = document.querySelectorAll(".form-field");
+    const form = document.querySelector(".form");
+
+    if (!fields.length || !form) return;
+
+    gsap.to(fields, {
+      backgroundSize: "100% 100%",
+      duration: 1.2,
+      ease: "power2.inOut",
+      stagger: 0.4,
+      scrollTrigger: {
+        trigger: form,
+        start: "top 80%",
+        toggleActions: "play none none none",
+      },
+    });
+
+    // Animacja tekstu o polityce prywatności (opcjonalnie)
+    const privacyText = document.querySelector(".effect-opacity-75");
+    if (privacyText) {
+      gsap.from(privacyText, {
+        opacity: 0,
+        y: 10,
+        duration: 1,
+        delay: 0.8,
+        scrollTrigger: {
+          trigger: form,
+          start: "top 80%",
+        },
+      });
+    }
+  }
+  document.addEventListener("DOMContentLoaded", initFormAnimations);
+});
