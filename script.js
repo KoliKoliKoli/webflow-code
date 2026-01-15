@@ -1,21 +1,38 @@
-// --- 1. DETEKCJA URZĄDZEŃ MOBILNYCH (Próg 767px) ---
+// --- 0. USTAWIENIA I POMOCNICZE ---
 const isMobile = window.matchMedia("(max-width: 767px)").matches;
+const isEditor =
+  typeof Webflow !== "undefined" && Webflow.env("editor") !== undefined;
+const supportsRIC = "requestIdleCallback" in window;
+const runIdle = (cb, timeout = 120) =>
+  supportsRIC ? requestIdleCallback(cb, { timeout }) : setTimeout(cb, timeout);
 
-// --- 2. BLOKADA SCROLLA I LOGIKA LOADERA (Zapobiega przewijaniu podczas ładowania) ---
+const throttleRaf = (fn) => {
+  let ticking = false;
+  return (...args) => {
+    if (!ticking) {
+      requestAnimationFrame(() => {
+        fn(...args);
+        ticking = false;
+      });
+      ticking = true;
+    }
+  };
+};
+
+// --- 1. DETEKCJA + STAN LOADERA ---
 window.isLoaderRunning = true;
 window.lenis = null;
 
+// --- 2. BLOKADA SCROLLA (tylko desktop) ---
 if (!isMobile) {
-  if (history.scrollRestoration) {
-    history.scrollRestoration = "manual";
-  }
+  if (history.scrollRestoration) history.scrollRestoration = "manual";
   window.scrollTo(0, 0);
   document.documentElement.style.overflow = "hidden";
   document.body.style.overflow = "hidden";
 
   function preventScrollEvents(e) {
-    if (window.isLoaderRunning) {
-      if (e.cancelable) e.preventDefault();
+    if (window.isLoaderRunning && e.cancelable) {
+      e.preventDefault();
       return false;
     }
   }
@@ -34,26 +51,31 @@ if (!isMobile) {
   window.addEventListener("touchmove", preventScrollEvents, { passive: false });
   requestAnimationFrame(forceScrollTop);
 } else {
+  // Mobile: bez blokady scrolla
+  window.isLoaderRunning = false;
   document.documentElement.style.overflow = "";
   document.body.style.overflow = "";
 }
 
-// --- 3. INICJALIZACJA LENIS (Płynny scroll dla Desktop, wyłączony w edytorze Webflow) ---
-if (Webflow.env("editor") === undefined) {
-  if (!isMobile) {
-    window.lenis = new Lenis({
-      lerp: 0.1, 
-      wheelMultiplier: 1,
-      infinite: false,
-      gestureOrientation: "vertical",
-      normalizeWheel: false,
-      smoothTouch: false,
-    });
+// --- 3. INICJALIZACJA LENIS (desktop, poza edytorem) ---
+if (!isMobile && !isEditor && typeof Lenis !== "undefined") {
+  window.lenis = new Lenis({
+    lerp: 0.1,
+    wheelMultiplier: 1,
+    infinite: false,
+    gestureOrientation: "vertical",
+    normalizeWheel: false,
+    smoothTouch: false,
+  });
 
-    window.lenis.stop();
-    window.lenis.scrollTo(0, { immediate: true });
+  window.lenis.stop();
+  window.lenis.scrollTo(0, { immediate: true });
 
-    window.lenis.on("scroll", ScrollTrigger.update);
+  window.lenis.on("scroll", () => {
+    if (typeof ScrollTrigger !== "undefined") ScrollTrigger.update();
+  });
+
+  if (typeof gsap !== "undefined" && gsap.ticker) {
     gsap.ticker.add((time) => {
       if (window.lenis) window.lenis.raf(time * 1000);
     });
@@ -62,9 +84,11 @@ if (Webflow.env("editor") === undefined) {
 
 // --- 4. GŁÓWNA KONFIGURACJA PO ZAŁADOWANIU DOM ---
 document.addEventListener("DOMContentLoaded", function () {
+  if (typeof gsap === "undefined" || typeof ScrollTrigger === "undefined")
+    return;
   gsap.registerPlugin(ScrollTrigger);
 
-  // --- 5. INTEGRACJA LENIS ZE SCROLLTRIGGER (Synchronizacja przewijania) ---
+  // --- 5. PROXY LENIS -> SCROLLTRIGGER ---
   if (window.lenis) {
     ScrollTrigger.scrollerProxy(document.body, {
       scrollTop(value) {
@@ -83,11 +107,36 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Wywołanie startowe głównych modułów
-  initHeroAnimation();
-  initNavigationLogic();
+  // --- 6. FUNKCJE POMOCNICZE ---
+  const lightFadeOnceIO = (selector, opts = {}) => {
+    const els = document.querySelectorAll(selector);
+    if (!els.length) return;
+    const {
+      rootMargin = "0px 0px -20% 0px",
+      threshold = 0.2,
+      from = { opacity: 0, y: 20 },
+      to = { opacity: 1, y: 0, duration: 1.4, ease: "power2.out", stagger: 0 }, // duration/stagger jak desktop (stagger 0 domyślnie, nadpisujemy niżej)
+    } = opts;
 
-  // --- 6. ANIMACJA WEJŚCIOWA HERO (Efekty startowe, rozmycia i pojawianie się elementów) ---
+    // Ustaw stany początkowe, aby nie było “przeskoków”
+    els.forEach((el) => gsap.set(el, from));
+
+    const observer = new IntersectionObserver(
+      (entries, ob) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            gsap.to(entry.target, to);
+            ob.unobserve(entry.target);
+          }
+        });
+      },
+      { rootMargin, threshold }
+    );
+
+    els.forEach((el) => observer.observe(el));
+  };
+
+  // --- 7. HERO ---
   function initHeroAnimation() {
     const heroImg = isMobile
       ? document.querySelector(".img-hero.is-mobile")
@@ -96,30 +145,42 @@ document.addEventListener("DOMContentLoaded", function () {
     const heroText = document.querySelector('[animation-data="text-hero"]');
     const heroButton = document.querySelector('[animation-data="button"]');
     const heroCaption = document.querySelector('[animation-data="caption"]');
-    const nav = document.querySelector(".nav_fixed"); 
+    const nav = document.querySelector(".nav_fixed");
     const rectangles = gsap.utils
       .toArray("[animation-rectangle]")
-      .sort((a, b) => a.getAttribute("animation-rectangle") - b.getAttribute("animation-rectangle"));
+      .sort(
+        (a, b) =>
+          a.getAttribute("animation-rectangle") -
+          b.getAttribute("animation-rectangle")
+      );
 
-    // Stany początkowe elementów przed animacją
-    if (nav) gsap.set(nav, { y: "8rem", opacity: 0 });
-
+    // Stany początkowe
+    if (nav) gsap.set(nav, { y: "6rem", opacity: 0 });
     if (isMobile) {
       if (heroImg) gsap.set(heroImg, { scale: 1, opacity: 1, zIndex: 100 });
-      if (heroText) gsap.set(heroText, { opacity: 0 }); 
-      if (rectangles.length) {
-        gsap.set(rectangles, { opacity: 0, scale: 1, zIndex: 101, force3D: true });
-      }
+      if (heroText) gsap.set(heroText, { opacity: 0 });
+      if (rectangles.length)
+        gsap.set(rectangles, { opacity: 0, scale: 1, zIndex: 101 });
     } else {
-      if (heroImg) gsap.set(heroImg, { scale: 2, filter: "blur(5px)", zIndex: 100, transformOrigin: "center center" });
+      if (heroImg)
+        gsap.set(heroImg, {
+          scale: 2,
+          filter: "blur(5px)",
+          zIndex: 100,
+          transformOrigin: "center center",
+        });
       if (heroText) gsap.set(heroText, { filter: "blur(5px)", opacity: 0 });
-      if (rectangles.length) gsap.set(rectangles, { opacity: 0, scale: 0.5, zIndex: 101, transformOrigin: "center center" });
+      if (rectangles.length)
+        gsap.set(rectangles, {
+          opacity: 0,
+          scale: 0.5,
+          zIndex: 101,
+          transformOrigin: "center center",
+        });
     }
+    if (heroButton) gsap.set(heroButton, { x: 32, opacity: 0 });
+    if (heroCaption) gsap.set(heroCaption, { yPercent: -18, opacity: 0 });
 
-    if (heroButton) gsap.set(heroButton, { x: 40, opacity: 0, force3D: true });
-    if (heroCaption) gsap.set(heroCaption, { yPercent: -20, opacity: 0, force3D: true });
-
-    // Funkcja odblokowująca scroll i uruchamiająca resztę skryptów po animacji Hero
     const safeInit = () => {
       window.isLoaderRunning = false;
       if (!isMobile) {
@@ -131,56 +192,120 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
 
-      const delay = isMobile ? 100 : 0;
-      setTimeout(() => { if (typeof initPortfolioAnimations === "function") initPortfolioAnimations(); }, delay);
-      setTimeout(() => { if (typeof initSliders === "function") initSliders(); }, delay * 2);
-      setTimeout(() => { if (typeof initTestimonials === "function") initTestimonials(); }, delay * 3);
-      setTimeout(() => {
-        if (typeof initGeneralAnimations === "function") initGeneralAnimations();
+      const delay = isMobile ? 80 : 0;
+      runIdle(() => {
+        if (typeof initPortfolioAnimations === "function")
+          initPortfolioAnimations();
+      }, delay);
+      runIdle(() => {
+        if (typeof initSliders === "function") initSliders();
+      }, delay + 40);
+      runIdle(() => {
+        if (typeof initTestimonials === "function") initTestimonials();
+      }, delay + 80);
+      runIdle(() => {
+        if (typeof initGeneralAnimations === "function")
+          initGeneralAnimations();
         if (typeof initPopup === "function") initPopup();
         if (typeof initButtonColorLogic === "function") initButtonColorLogic();
         if (typeof initFormAnimations === "function") initFormAnimations();
         ScrollTrigger.refresh();
-      }, delay * 4);
+      }, delay + 120);
     };
 
-    // Oś czasu (Timeline) dla animacji powitalnej
     requestAnimationFrame(() => {
       const tl = gsap.timeline({
-        delay: isMobile ? 0.1 : 0.4,
+        delay: isMobile ? 0.08 : 0.35,
         defaults: { force3D: true },
         onComplete: safeInit,
       });
 
       if (isMobile) {
-        if (rectangles.length > 0) {
-          tl.to(rectangles, { opacity: 1, duration: 0.4, stagger: 0.05, ease: "power2.out" }, 0);
+        if (rectangles.length) {
+          tl.to(
+            rectangles,
+            { opacity: 1, duration: 0.35, stagger: 0.05, ease: "power2.out" },
+            0
+          );
         }
-        tl.to(heroCaption, { yPercent: 0, opacity: 1, duration: 0.6, ease: "power2.out" }, 0.2);
-        tl.to(heroText, { opacity: 1, duration: 0.6, ease: "power2.out" }, 0.4);
-        
-        if (nav) {
-          tl.to(nav, { y: "0rem", opacity: 1, duration: 1.2, ease: "power1.inOut" }, 0.52);
-        }
-
-        tl.to(heroButton, { x: 0, opacity: 1, duration: 0.6, ease: "power2.out" }, 0.6);
+        tl.to(
+          heroCaption,
+          { yPercent: 0, opacity: 1, duration: 0.45, ease: "power2.out" },
+          0.12
+        );
+        tl.to(
+          heroText,
+          { opacity: 1, duration: 0.45, ease: "power2.out" },
+          0.24
+        );
+        if (nav)
+          tl.to(
+            nav,
+            { y: "0rem", opacity: 1, duration: 0.8, ease: "power1.inOut" },
+            0.32
+          );
+        if (heroButton)
+          tl.to(
+            heroButton,
+            { x: 0, opacity: 1, duration: 0.5, ease: "power2.out" },
+            0.32
+          );
       } else {
-        if (rectangles.length > 0) {
-          tl.to(rectangles, { opacity: 1, scale: 1, duration: 0.6, stagger: 0.2, ease: "power2.out" }, 0);
+        if (rectangles.length) {
+          tl.to(
+            rectangles,
+            {
+              opacity: 1,
+              scale: 1,
+              duration: 0.6,
+              stagger: 0.18,
+              ease: "power2.out",
+            },
+            0
+          );
         }
-        tl.to(heroImg, { scale: 1, filter: "blur(0px)", duration: 1.8, ease: "power2.inOut" }, 0.5);
-        tl.to(heroCaption, { yPercent: 0, opacity: 1, duration: 1, ease: "power2.out" }, 1.8);
-        tl.to(heroText, { filter: "blur(0px)", opacity: 1, duration: 1.2, ease: "power2.out" }, 2.0);
-        tl.to(heroButton, { x: 0, opacity: 1, duration: 1.2, ease: "power2.out" }, 2.2);
-        
-        if (nav) {
-          tl.to(nav, { y: "0rem", opacity: 1, duration: 1.2, ease: "power1.inOut" }, 2.4);
-        }
+        tl.to(
+          heroImg,
+          {
+            scale: 1,
+            filter: "blur(0px)",
+            duration: 1.6,
+            ease: "power2.inOut",
+          },
+          0.4
+        );
+        tl.to(
+          heroCaption,
+          { yPercent: 0, opacity: 1, duration: 1.0, ease: "power2.out" },
+          1.4
+        );
+        tl.to(
+          heroText,
+          {
+            filter: "blur(0px)",
+            opacity: 1,
+            duration: 1.0,
+            ease: "power2.out",
+          },
+          1.6
+        );
+        if (heroButton)
+          tl.to(
+            heroButton,
+            { x: 0, opacity: 1, duration: 1.0, ease: "power2.out" },
+            1.8
+          );
+        if (nav)
+          tl.to(
+            nav,
+            { y: "0rem", opacity: 1, duration: 1.0, ease: "power1.inOut" },
+            2.0
+          );
       }
     });
   }
 
-  // --- 7. LOGIKA NAWIGACJI (Pływające tło pod linkami, chowanie menu przy scrollu w dół) ---
+  // --- 8. NAWIGACJA ---
   function initNavigationLogic() {
     const nav = document.querySelector(".nav_fixed");
     const navLinks = Array.from(document.querySelectorAll(".link-block"));
@@ -192,40 +317,34 @@ document.addEventListener("DOMContentLoaded", function () {
         const id = a.getAttribute("href");
         return id && id.startsWith("#") ? document.querySelector(id) : null;
       })
-      .filter((el) => !!el);
+      .filter(Boolean);
 
     let activeIndex = 0;
     let visualIndex = 0;
     let isClicking = false;
     let isHovering = false;
 
-    // Obsługa chowania menu przy przewijaniu
     if (nav) {
       const defaultBottom = getComputedStyle(nav).bottom;
       const hiddenBottom = `-${nav.offsetHeight + 40}px`;
       let lastScrollY = window.scrollY;
 
-      let ticking = false;
-      window.addEventListener("scroll", () => {
-        if (!ticking) {
-          window.requestAnimationFrame(() => {
-            const currentY = window.scrollY;
-            if (currentY < 150) {
-              nav.style.bottom = defaultBottom;
-            } else {
-              if (currentY > lastScrollY + 10) nav.style.bottom = hiddenBottom;
-              else if (currentY < lastScrollY - 10) nav.style.bottom = defaultBottom;
-            }
-            lastScrollY = currentY;
-            ticking = false;
-          });
-          ticking = true;
+      const onScroll = throttleRaf(() => {
+        const currentY = window.scrollY;
+        if (currentY < 150) {
+          nav.style.bottom = defaultBottom;
+        } else {
+          if (currentY > lastScrollY + 10) nav.style.bottom = hiddenBottom;
+          else if (currentY < lastScrollY - 10)
+            nav.style.bottom = defaultBottom;
         }
-      }, { passive: true });
-      nav.style.transition = "bottom 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)"; 
+        lastScrollY = currentY;
+      });
+
+      window.addEventListener("scroll", onScroll, { passive: true });
+      nav.style.transition = "bottom 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
     }
 
-    // Funkcja animująca tło linków nawigacyjnych
     function moveBgTo(targetIndex) {
       if (!navLinks[targetIndex]) return;
       const oldLink = navLinks[visualIndex];
@@ -236,18 +355,41 @@ document.addEventListener("DOMContentLoaded", function () {
       if (visualIndex !== targetIndex) {
         const direction = targetIndex > visualIndex ? 100 : -100;
         oldLink.classList.remove("link-bg-color");
-        if (oldBg) gsap.to(oldBg, { xPercent: direction, opacity: 0, duration: 0.4, ease: "power2.inOut", overwrite: true });
+        if (oldBg)
+          gsap.to(oldBg, {
+            xPercent: direction,
+            opacity: 0,
+            duration: 0.35,
+            ease: "power2.inOut",
+            overwrite: true,
+          });
         newLink.classList.add("link-bg-color");
-        if (newBg) gsap.fromTo(newBg, { xPercent: -direction, opacity: 1 }, { xPercent: 0, opacity: 1, duration: 0.4, ease: "power2.inOut", overwrite: true });
+        if (newBg)
+          gsap.fromTo(
+            newBg,
+            { xPercent: -direction, opacity: 1 },
+            {
+              xPercent: 0,
+              opacity: 1,
+              duration: 0.35,
+              ease: "power2.inOut",
+              overwrite: true,
+            }
+          );
         visualIndex = targetIndex;
       } else {
         newLink.classList.add("link-bg-color");
-        if (newBg) gsap.to(newBg, { xPercent: 0, opacity: 1, duration: 0.2, overwrite: true });
+        if (newBg)
+          gsap.to(newBg, {
+            xPercent: 0,
+            opacity: 1,
+            duration: 0.2,
+            overwrite: true,
+          });
       }
     }
 
-    // Aktualizacja aktywnego linku na podstawie scrolla
-    function updateActiveOnScroll() {
+    const updateActiveOnScroll = throttleRaf(() => {
       if (isClicking) return;
       let foundIndex = -1;
       const innerH = window.innerHeight;
@@ -261,7 +403,7 @@ document.addEventListener("DOMContentLoaded", function () {
         activeIndex = foundIndex;
         if (!isHovering) moveBgTo(activeIndex);
       }
-    }
+    });
 
     navLinks.forEach((link, i) => {
       link.addEventListener("click", (e) => {
@@ -272,20 +414,34 @@ document.addEventListener("DOMContentLoaded", function () {
           isClicking = true;
           activeIndex = i;
           moveBgTo(i);
-          const unlock = () => { isClicking = false; updateActiveOnScroll(); };
+          const unlock = () => {
+            isClicking = false;
+            updateActiveOnScroll();
+          };
           if (window.lenis) {
-            window.lenis.scrollTo(targetSec, { duration: 1.2, onComplete: unlock });
+            window.lenis.scrollTo(targetSec, {
+              duration: 1.0,
+              onComplete: unlock,
+            });
           } else {
             targetSec.scrollIntoView({ behavior: "smooth" });
-            setTimeout(unlock, 1000);
+            setTimeout(unlock, 800);
           }
         }
       });
-      link.addEventListener("mouseenter", () => { if (!isClicking) { isHovering = true; moveBgTo(i); } });
+      link.addEventListener("mouseenter", () => {
+        if (!isClicking) {
+          isHovering = true;
+          moveBgTo(i);
+        }
+      });
     });
 
     if (navContainer) {
-      navContainer.addEventListener("mouseleave", () => { isHovering = false; if (!isClicking) moveBgTo(activeIndex); });
+      navContainer.addEventListener("mouseleave", () => {
+        isHovering = false;
+        if (!isClicking) moveBgTo(activeIndex);
+      });
     }
 
     const initialBg = navLinks[0].querySelector(".nav-bg");
@@ -294,68 +450,374 @@ document.addEventListener("DOMContentLoaded", function () {
     window.addEventListener("scroll", updateActiveOnScroll, { passive: true });
   }
 
-  // --- 8. ANIMACJE SEKCI PORTFOLIO (Rozszerzanie bloków podczas przewijania) ---
-  function initPortfolioAnimations() {
-    if (isMobile) return;
-    gsap.utils.toArray("[data-animation='true']").forEach((element) => {
-      const prevElement = element.previousElementSibling;
-      const captionWrapper = element.querySelector(".caption-wrapper");
-      const orangeBg = element.querySelector(".block-bg-orange");
-      const tl = gsap.timeline({ scrollTrigger: { trigger: element, start: "top bottom", end: "top 10%", scrub: true } });
-      tl.fromTo(element, { width: "82%" }, { width: "100%", duration: 1, ease: "none" }, 0);
-      if (prevElement && prevElement.classList.contains("portfolio-block")) {
-        const bgElement = prevElement.querySelector(".bg-black");
-        if (bgElement) tl.fromTo(bgElement, { backgroundColor: "rgba(0,0,0,0)" }, { backgroundColor: "rgba(0,0,0,0.75)", duration: 1, ease: "none" }, 0);
-      }
-      if (captionWrapper) tl.fromTo(captionWrapper, { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 0.4);
-      if (orangeBg) tl.fromTo(orangeBg, { scaleX: 0 }, { scaleX: 1, transformOrigin: "center center", duration: 0.5, ease: "power2.inOut" }, 0.5);
-      const textElements = element.querySelectorAll('[data-animation="text"]');
-      textElements.forEach((textElement) => { tl.fromTo(textElement, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "none" }, 0.7); });
-    });
+  // --- 9. PORTFOLIO ---
+function initPortfolioAnimations() {
+  if (isMobile) {
+    initPortfolioPaginationMobile();
+    initPortfolioAnimationsMobile();
+    return;
   }
 
-  // --- 9. OBSŁUGA SLIDERÓW (Animacja treści przy zmianie slajdów) ---
+  // DESKTOP / TABLET (bez zmian)
+  gsap.utils.toArray("[data-animation='true']").forEach((element) => {
+    const prevElement = element.previousElementSibling;
+    const captionWrapper = element.querySelector(".caption-wrapper");
+    const orangeBg = element.querySelector(".block-bg-orange");
+    const tl = gsap.timeline({
+      scrollTrigger: {
+        trigger: element,
+        start: "top bottom",
+        end: "top 10%",
+        scrub: true,
+      },
+    });
+    tl.fromTo(element, { width: "82%" }, { width: "100%", duration: 1, ease: "none" }, 0);
+    if (prevElement && prevElement.classList.contains("portfolio-block")) {
+      const bgElement = prevElement.querySelector(".bg-black");
+      if (bgElement)
+        tl.fromTo(
+          bgElement,
+          { backgroundColor: "rgba(0,0,0,0)" },
+          { backgroundColor: "rgba(0,0,0,0.75)", duration: 1, ease: "none" },
+          0
+        );
+    }
+    if (captionWrapper)
+      tl.fromTo(captionWrapper, { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 0.4);
+    if (orangeBg)
+      tl.fromTo(
+        orangeBg,
+        { scaleX: 0 },
+        { scaleX: 1, transformOrigin: "center center", duration: 0.5, ease: "power2.inOut" },
+        0.5
+      );
+    const textElements = element.querySelectorAll('[data-animation="text"]');
+    textElements.forEach((textElement) => {
+      tl.fromTo(textElement, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "none" }, 0.7);
+    });
+  });
+}
+
+// --- MOBILE: helper do tween scrollLeft (~0.6s) ---
+function tweenScrollTo(wrapper, targetX, duration = 0.6) {
+  const startX = wrapper.scrollLeft;
+  const delta = targetX - startX;
+  let startTime = null;
+  function step(ts) {
+    if (!startTime) startTime = ts;
+    const t = Math.min((ts - startTime) / (duration * 1000), 1);
+    const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // easeInOutQuad
+    wrapper.scrollLeft = startX + delta * eased;
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// --- MOBILE: paginacja ---
+function initPortfolioPaginationMobile() {
+  const wrapper = document.querySelector(".portfolio-wrapper");
+  const pagContainer = document.querySelector(".mobile-scroll-paggination");
+  if (!wrapper || !pagContainer) return;
+
+  pagContainer.innerHTML = "";
+  const slides = Array.from(wrapper.children).filter((el) => el.nodeType === 1);
+  const dots = slides.map((_, idx) => {
+    const dot = document.createElement("div");
+    dot.classList.add("paggination");
+    if (idx === 0) dot.classList.add("active");
+    dot.dataset.index = idx;
+    pagContainer.appendChild(dot);
+    dot.addEventListener("click", () => {
+      const slide = slides[idx];
+      if (!slide) return;
+      tweenScrollTo(wrapper, slide.offsetLeft, 1.6);
+    });
+    return dot;
+  });
+  if (!dots.length) return;
+
+  const throttleRaf = (fn) => {
+    let ticking = false;
+    return (...args) => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          fn(...args);
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+  };
+
+  const updateActive = throttleRaf(() => {
+    const viewportCenter = wrapper.scrollLeft + wrapper.clientWidth * 0.5;
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    slides.forEach((slide, idx) => {
+      const center = slide.offsetLeft + slide.offsetWidth * 0.5;
+      const dist = Math.abs(center - viewportCenter);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = idx;
+      }
+    });
+    dots.forEach((dot, i) => {
+      if (i === bestIdx) dot.classList.add("active");
+      else dot.classList.remove("active");
+    });
+  });
+
+  wrapper.addEventListener("scroll", updateActive, { passive: true });
+  window.addEventListener("resize", updateActive);
+  updateActive();
+}
+
+// --- MOBILE: animacje wejścia treści, odpalane przy zmianie aktywnego slajdu ---
+function initPortfolioAnimationsMobile() {
+  const wrapper = document.querySelector(".portfolio-wrapper");
+  if (!wrapper) return;
+  const slides = Array.from(wrapper.children).filter((el) => el.nodeType === 1);
+  if (!slides.length) return;
+
+  const DUR_CAPTION = 1.8;
+  const DUR_BG = 1.8;
+  const DUR_TEXT = 1.6;
+  const STAGGER_TEXT = 0.4;
+
+  const resetSlide = (slide) => {
+    if (!slide) return;
+    const captionWrapper = slide.querySelector(".caption-wrapper");
+    const orangeBg = slide.querySelector(".block-bg-orange");
+    const textElements = slide.querySelectorAll('[data-animation="text"]');
+    if (captionWrapper) gsap.set(captionWrapper, { opacity: 0, y: 10 });
+    if (orangeBg) gsap.set(orangeBg, { scaleX: 0, transformOrigin: "center center" });
+    textElements.forEach((el) => gsap.set(el, { opacity: 0, y: 10 }));
+  };
+
+  const animateSlide = (slide) => {
+    if (!slide) return;
+    const captionWrapper = slide.querySelector(".caption-wrapper");
+    const orangeBg = slide.querySelector(".block-bg-orange");
+    const textElements = slide.querySelectorAll('[data-animation="text"]');
+    const tl = gsap.timeline({ defaults: { ease: "power2.out" } });
+    if (captionWrapper) tl.to(captionWrapper, { opacity: 1, y: 0, duration: DUR_CAPTION }, 0);
+    if (orangeBg) tl.to(orangeBg, { scaleX: 1, duration: DUR_BG }, 0.05);
+    if (textElements.length) {
+      tl.to(textElements, { opacity: 1, y: 0, duration: DUR_TEXT, stagger: STAGGER_TEXT }, 0.1);
+    }
+  };
+
+  // początkowe reset + animacja pierwszego
+  slides.forEach(resetSlide);
+  animateSlide(slides[0]);
+
+  let activeIdx = 0;
+
+  const throttleRaf = (fn) => {
+    let ticking = false;
+    return (...args) => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          fn(...args);
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+  };
+
+  const onScroll = throttleRaf(() => {
+    const viewportCenter = wrapper.scrollLeft + wrapper.clientWidth * 0.5;
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    slides.forEach((slide, idx) => {
+      const center = slide.offsetLeft + slide.offsetWidth * 0.5;
+      const dist = Math.abs(center - viewportCenter);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = idx;
+      }
+    });
+    if (bestIdx !== activeIdx) {
+      // zmiana slajdu -> zresetuj nowy i animuj
+      resetSlide(slides[bestIdx]);
+      animateSlide(slides[bestIdx]);
+      activeIdx = bestIdx;
+    }
+  });
+
+  wrapper.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
+}
+
+  // --- 10. SLIDERY ---
   function initSliders() {
-    function animateContent(activeBlock) {
+    // Czasy jak na desktopie
+    const durMain = 1.2;
+    const durDivider = 2.0;
+    const durSocial = 0.9;
+    const startFilterDesktop = "blur(10px)";
+
+    // Mobile: per-element IO animacja
+    function animatePerElementMobile(block) {
+      const elements = [
+        ...block.querySelectorAll(".font-size-link, .heading-style-h4"),
+        ...block.querySelectorAll(".list-block, .text-caption"),
+        ...block.querySelectorAll(".social-link-block"),
+        ...block.querySelectorAll(".divider"),
+      ];
+      if (!elements.length) return;
+
+      elements.forEach((el) => {
+        const isDivider = el.classList.contains("divider");
+        gsap.set(el, {
+          opacity: isDivider ? 1 : 0,
+          y: isDivider ? 0 : 10,
+          filter: "none",
+          scaleX: isDivider ? 0 : 1,
+          transformOrigin: isDivider ? "left center" : undefined,
+          willChange: "opacity, transform",
+        });
+      });
+
+      const io = new IntersectionObserver(
+        (entries, ob) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            const el = entry.target;
+            const isDivider = el.classList.contains("divider");
+            ob.unobserve(el);
+            gsap.to(el, {
+              opacity: 1,
+              y: 0,
+              scaleX: isDivider ? 1 : 1,
+              duration: isDivider ? durDivider : durMain,
+              ease: "power2.out",
+            });
+          });
+        },
+        { rootMargin: "0px 0px -20% 0px", threshold: 0.2 } // ~top 80%
+      );
+
+      elements.forEach((el) => io.observe(el));
+    }
+
+    // Desktop: oryginalna animacja całego bloku
+    function animateContentDesktop(activeBlock) {
       if (!activeBlock) return;
-      const titles = activeBlock.querySelectorAll(".font-size-link, .heading-style-h4");
+      const titles = activeBlock.querySelectorAll(
+        ".font-size-link, .heading-style-h4"
+      );
       const bodies = activeBlock.querySelectorAll(".list-block, .text-caption");
       const dividers = activeBlock.querySelectorAll(".divider");
       const socials = activeBlock.querySelectorAll(".social-link-block");
-      const tl = gsap.timeline({ defaults: { ease: "power3.out", duration: 1.2 } });
-      const startFilter = isMobile ? "none" : "blur(10px)";
+
       if (titles.length || bodies.length) {
-        gsap.set([titles, bodies], { opacity: 0, y: 10, filter: startFilter });
-        tl.to(titles, { opacity: 1, y: 0, filter: "none", stagger: 0.2 }, 0).to(bodies, { opacity: 1, y: 0, filter: "none", stagger: 0.15 }, "-=0.8");
+        gsap.set([titles, bodies], {
+          opacity: 0,
+          y: 10,
+          filter: startFilterDesktop,
+        });
       }
-      if (dividers.length) { gsap.set(dividers, { scaleX: 0, opacity: 1 }); tl.to(dividers, { scaleX: 1, duration: 2.0, stagger: 0.2 }, "-=2.0"); }
-      if (socials.length) {
-        gsap.set(socials, { opacity: 0, y: 10, filter: startFilter });
-        tl.to(socials, { opacity: 1, y: 0, filter: "none", duration: 0.8, stagger: 0.2, ease: "power2.out" }, "-=1.2");
-      }
+      if (dividers.length)
+        gsap.set(dividers, {
+          scaleX: 0,
+          opacity: 1,
+          transformOrigin: "left center",
+        });
+      if (socials.length)
+        gsap.set(socials, { opacity: 0, y: 10, filter: startFilterDesktop });
+
+      const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+      tl.to(
+        titles,
+        { opacity: 1, y: 0, filter: "none", duration: durMain, stagger: 0.2 },
+        0
+      )
+        .to(
+          bodies,
+          {
+            opacity: 1,
+            y: 0,
+            filter: "none",
+            duration: durMain,
+            stagger: 0.15,
+          },
+          "-=0.9"
+        )
+        .to(
+          dividers,
+          { scaleX: 1, duration: durDivider, stagger: 0.2 },
+          "-=durDivider"
+        )
+        .to(
+          socials,
+          {
+            opacity: 1,
+            y: 0,
+            filter: "none",
+            duration: durSocial,
+            stagger: 0.2,
+            ease: "power2.out",
+          },
+          "-=0.8"
+        );
     }
+
     document.querySelectorAll("[data-slider-group]").forEach((group) => {
       const texts = group.querySelectorAll(".slider-text");
       const inner = group.querySelector(".slider-inner");
-      const blocks = group.querySelectorAll(".slider-block, .slider-block-services");
+      const blocks = group.querySelectorAll(
+        ".slider-block, .slider-block-services"
+      );
       const connects = group.querySelectorAll("[slider-connect]");
       if (!inner || blocks.length === 0) return;
-      function goTo(slide, isFirstLoad = false) {
+
+      function goTo(slide) {
         const targetBlock = blocks[slide];
         if (!targetBlock) return;
         const gap = parseFloat(getComputedStyle(inner).columnGap) || 0;
-        gsap.to(inner, { x: -slide * (targetBlock.offsetWidth + gap), duration: 0.2, ease: "power2.out", onComplete: () => { if (!isFirstLoad) animateContent(targetBlock); } });
-        texts.forEach((text, i) => i === slide ? text.classList.remove("font-opacity-25") : text.classList.add("font-opacity-25"));
-        connects.forEach((el) => { if (parseInt(el.getAttribute("slider-connect")) === slide) el.classList.remove("font-color-opacity"); else el.classList.add("font-color-opacity"); });
-        if (isFirstLoad) animateContent(targetBlock);
+
+        gsap.to(inner, {
+          x: -slide * (targetBlock.offsetWidth + gap),
+          duration: isMobile ? 0.18 : 0.25,
+          ease: "power2.out",
+          onComplete: () => {
+            if (isMobile) animatePerElementMobile(targetBlock);
+            else animateContentDesktop(targetBlock);
+          },
+        });
+
+        texts.forEach((text, i) =>
+          i === slide
+            ? text.classList.remove("font-opacity-25")
+            : text.classList.add("font-opacity-25")
+        );
+        connects.forEach((el) => {
+          const idx = parseInt(el.getAttribute("slider-connect"), 10);
+          if (idx === slide) el.classList.remove("font-color-opacity");
+          else el.classList.add("font-color-opacity");
+        });
+
+        requestAnimationFrame(() => {
+          if (isMobile) animatePerElementMobile(targetBlock);
+          else animateContentDesktop(targetBlock);
+        });
       }
-      ScrollTrigger.create({ trigger: group, start: "top 75%", onEnter: () => goTo(0, true), once: true });
+
+      ScrollTrigger.create({
+        trigger: group,
+        start: "top 75%",
+        onEnter: () => goTo(0),
+        once: true,
+      });
+
       texts.forEach((text, i) => text.addEventListener("click", () => goTo(i)));
       gsap.set(inner, { x: 0 });
     });
   }
 
-  // --- 10. TESTIMONIALS (Karuzela opinii z efektem rozmycia slajdów bocznych) ---
+  // --- 11. TESTIMONIALS ---
   function initTestimonials() {
     const wrapper = document.querySelector(".testimonial-wrapper");
     if (!wrapper) return;
@@ -363,46 +825,122 @@ document.addEventListener("DOMContentLoaded", function () {
     const prevArrow = document.querySelector(".testimonial-arrow--prev");
     const nextArrow = document.querySelector(".testimonial-arrow--next");
     let current = 0;
-    gsap.set(slides, { opacity: 0.4, filter: isMobile ? "none" : "blur(5px)" });
+
+    const getGap = () => {
+      const style = getComputedStyle(wrapper);
+      return parseFloat(style.columnGap || style.gap || 0) || 0;
+    };
+
+    gsap.set(slides, {
+      opacity: isMobile ? 1 : 0.4,
+      filter: isMobile ? "none" : "blur(5px)",
+    });
+
     function updateSlider() {
-      const slidesToShow = parseInt(getComputedStyle(wrapper).getPropertyValue("--_slider---quantity")) || 1;
+      const slidesToShow =
+        parseInt(
+          getComputedStyle(wrapper).getPropertyValue("--_slider---quantity")
+        ) || 1;
       const maxIndex = Math.max(0, slides.length - slidesToShow);
-      if (current < 0) current = 0; if (current > maxIndex) current = maxIndex;
-      gsap.to(wrapper, { xPercent: -(100 / slidesToShow) * current, x: -(1.375 / slidesToShow) * current + "rem", duration: 1.2, ease: "power2.inOut" });
+      if (current < 0) current = 0;
+      if (current > maxIndex) current = maxIndex;
+
+      const gap = getGap();
+      const slideWidth =
+        slides[0]?.offsetWidth || wrapper.clientWidth / slidesToShow;
+      const offset = -current * (slideWidth + gap); // realny pikselowy offset
+
+      gsap.to(wrapper, {
+        x: offset,
+        duration: isMobile ? 0.7 : 1.0,
+        ease: "power2.inOut",
+      });
+
       slides.forEach((slide, index) => {
         const isVisible = index >= current && index < current + slidesToShow;
-        gsap.to(slide, { filter: isMobile ? "none" : isVisible ? "blur(0px)" : "blur(5px)", opacity: isVisible ? 1 : 0.4, duration: 1.2 });
+        gsap.to(slide, {
+          filter: isMobile ? "none" : isVisible ? "blur(0px)" : "blur(5px)",
+          opacity: isVisible ? 1 : 0.4,
+          duration: isMobile ? 0.6 : 1.0,
+        });
       });
+
       if (prevArrow) prevArrow.classList.toggle("is-active", current > 0);
-      if (nextArrow) nextArrow.classList.toggle("is-active", current < maxIndex);
+      if (nextArrow)
+        nextArrow.classList.toggle("is-active", current < maxIndex);
     }
-    if (prevArrow) prevArrow.addEventListener("click", () => { current--; updateSlider(); });
-    if (nextArrow) nextArrow.addEventListener("click", () => { current++; updateSlider(); });
-    window.addEventListener("resize", updateSlider);
+
+    if (prevArrow)
+      prevArrow.addEventListener("click", () => {
+        current--;
+        updateSlider();
+      });
+    if (nextArrow)
+      nextArrow.addEventListener("click", () => {
+        current++;
+        updateSlider();
+      });
+    window.addEventListener("resize", throttleRaf(updateSlider));
     updateSlider();
   }
 
-  // --- 11. OGÓLNE ANIMACJE TEKSTU I OFERTY (Pojawianie się elementów przy scrollowaniu) ---
+  // --- 12. OGÓLNE ANIMACJE ---
   function initGeneralAnimations() {
+    if (isMobile) {
+      lightFadeOnceIO('[text-animation="true"]', {
+        from: { opacity: 0, y: 20 },
+        to: { opacity: 1, y: 0, duration: 2.4, ease: "power2.out" },
+      });
+      if (document.querySelectorAll("[data-offer]").length) {
+        lightFadeOnceIO("[data-offer]", {
+          from: { opacity: 0, y: 40 },
+          to: {
+            opacity: 1,
+            y: 0,
+            duration: 2.4,
+            ease: "power2.out",
+            stagger: 0.35,
+          },
+        });
+      }
+      return;
+    }
+
     document.querySelectorAll('[text-animation="true"]').forEach((el) => {
-      const startVars = { y: 20, opacity: 0 };
-      if (!isMobile) startVars.filter = "blur(5px)";
-      const endVars = { y: 0, opacity: 1, duration: 1.6, scrollTrigger: { trigger: el, start: "top 80%" } };
-      if (!isMobile) endVars.filter = "blur(0px)";
+      const startVars = { y: 20, opacity: 0, filter: "blur(5px)" };
+      const endVars = {
+        y: 0,
+        opacity: 1,
+        duration: 1.4,
+        filter: "blur(0px)",
+        scrollTrigger: { trigger: el, start: "top 90%", once: true },
+      };
       gsap.fromTo(el, startVars, endVars);
     });
+
     const offerElements = document.querySelectorAll("[data-offer]");
     if (offerElements.length > 0) {
-      const sorted = Array.from(offerElements).sort((a, b) => a.getAttribute("data-offer") - b.getAttribute("data-offer"));
-      const startVars = { opacity: 0, y: 40 };
-      if (!isMobile) startVars.filter = "blur(5px)";
-      const endVars = { opacity: 1, y: 0, duration: 1.6, stagger: 0.4, scrollTrigger: { trigger: ".padding-top-6", start: "top 80%" } };
-      if (!isMobile) endVars.filter = "blur(0px)";
+      const sorted = Array.from(offerElements).sort(
+        (a, b) => a.getAttribute("data-offer") - b.getAttribute("data-offer")
+      );
+      const startVars = { opacity: 0, y: 40, filter: "blur(5px)" };
+      const endVars = {
+        opacity: 1,
+        y: 0,
+        duration: 1.4,
+        stagger: 0.35,
+        filter: "blur(0px)",
+        scrollTrigger: {
+          trigger: ".padding-top-6",
+          start: "top 80%",
+          once: true,
+        },
+      };
       gsap.fromTo(sorted, startVars, endVars);
     }
   }
 
-  // --- 12. OBSŁUGA POPUPU (Otwieranie, zamykanie i blokowanie scrolla Lenis) ---
+  // --- 13. POPUP ---
   function initPopup() {
     const openBtns = document.querySelectorAll('[data-popup="open"]');
     const closeBtn = document.querySelector('[data-popup="close"]');
@@ -410,36 +948,92 @@ document.addEventListener("DOMContentLoaded", function () {
     const popupBlock = document.querySelector('[data-popup="block"]');
     const heroBtn = document.querySelector('[animation-data="button"]');
     if (!section || openBtns.length === 0) return;
+
     gsap.set(section, { display: "none", opacity: 0 });
-    gsap.set([closeBtn, popupBlock], { x: 80, opacity: 0, filter: isMobile ? "none" : "blur(10px)" });
+    gsap.set([closeBtn, popupBlock], {
+      x: 80,
+      opacity: 0,
+      filter: isMobile ? "none" : "blur(10px)",
+    });
+
     const closePopup = () => {
-      const tl = gsap.timeline({ onComplete: () => { gsap.set(section, { display: "none" }); if (window.lenis) window.lenis.start(); } });
-      tl.to([closeBtn, popupBlock], { x: 50, opacity: 0, filter: isMobile ? "none" : "blur(10px)", duration: 0.4, stagger: -0.1 }).to(section, { opacity: 0, duration: 0.3 }).to([openBtns, heroBtn], { opacity: 1, duration: 0.4 }, "-=0.2");
+      const tl = gsap.timeline({
+        onComplete: () => {
+          gsap.set(section, { display: "none" });
+          if (window.lenis) window.lenis.start();
+        },
+      });
+      tl.to([closeBtn, popupBlock], {
+        x: 50,
+        opacity: 0,
+        filter: isMobile ? "none" : "blur(10px)",
+        duration: 0.35,
+        stagger: -0.1,
+      })
+        .to(section, { opacity: 0, duration: 0.25 })
+        .to([openBtns, heroBtn], { opacity: 1, duration: 0.35 }, "-=0.15");
     };
+
     openBtns.forEach((btn) => {
       btn.addEventListener("click", () => {
         if (window.lenis) window.lenis.stop();
         const tl = gsap.timeline();
-        tl.to([btn, heroBtn], { opacity: 0, duration: 0.3 }).set(section, { display: "flex" }).to(section, { opacity: 1, duration: 0.5 }, "-=0.5").to([popupBlock, closeBtn], { x: 0, opacity: 1, filter: isMobile ? "none" : "blur(0px)", duration: 0.8, stagger: 0.1 }, "-=0.2");
+        tl.to([btn, heroBtn], { opacity: 0, duration: 0.25 })
+          .set(section, { display: "flex" })
+          .to(section, { opacity: 1, duration: 0.45 }, "-=0.4")
+          .to(
+            [popupBlock, closeBtn],
+            {
+              x: 0,
+              opacity: 1,
+              filter: isMobile ? "none" : "blur(0px)",
+              duration: 0.6,
+              stagger: 0.08,
+            },
+            "-=0.2"
+          );
       });
     });
+
     if (closeBtn) closeBtn.addEventListener("click", closePopup);
-    section.addEventListener("click", (e) => { if (e.target === section) closePopup(); });
+    section.addEventListener("click", (e) => {
+      if (e.target === section) closePopup();
+    });
   }
 
-  // --- 13. ZMIANA KOLORU PRZYCISKU (Zależna od wejścia w sekcję portfolio) ---
+  // --- 14. KOLOR PRZYCISKU ---
   function initButtonColorLogic() {
     const fixedBtn = document.querySelector('[button-color="section"]');
     const triggerSection = document.querySelector("#section_portfolio");
     if (!fixedBtn || !triggerSection) return;
-    ScrollTrigger.create({ trigger: triggerSection, start: "top 10%", onEnter: () => gsap.to(fixedBtn, { backgroundColor: "#fff9f5", duration: 0.4 }), onLeaveBack: () => gsap.to(fixedBtn, { backgroundColor: "rgba(230, 213, 201, 0.2)", duration: 0.4 }) });
+    ScrollTrigger.create({
+      trigger: triggerSection,
+      start: "top 10%",
+      onEnter: () =>
+        gsap.to(fixedBtn, { backgroundColor: "#fff9f5", duration: 0.35 }),
+      onLeaveBack: () =>
+        gsap.to(fixedBtn, {
+          backgroundColor: "rgba(230, 213, 201, 0.2)",
+          duration: 0.35,
+        }),
+      once: false,
+    });
   }
 
-  // --- 14. ANIMACJE POLA FORMULARZA (Efekt ładowania tła przy scrollu) ---
+  // --- 15. FORM FIELDS ---
   function initFormAnimations() {
     const fields = document.querySelectorAll(".form-field");
     const form = document.querySelector(".form");
     if (!fields.length || !form) return;
-    gsap.to(fields, { backgroundSize: "100% 100%", duration: 1.8, stagger: 0.4, scrollTrigger: { trigger: form, start: "top 80%" } });
+    gsap.to(fields, {
+      backgroundSize: "100% 100%",
+      duration: isMobile ? 1.0 : 1.6,
+      stagger: 0.35,
+      scrollTrigger: { trigger: form, start: "top 80%", once: true },
+    });
   }
+
+  // --- START ---
+  initHeroAnimation();
+  initNavigationLogic();
 });
