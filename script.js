@@ -115,7 +115,7 @@ document.addEventListener("DOMContentLoaded", function () {
       rootMargin = "0px 0px -20% 0px",
       threshold = 0.2,
       from = { opacity: 0, y: 20 },
-      to = { opacity: 1, y: 0, duration: 1.4, ease: "power2.out", stagger: 0 }, // duration/stagger jak desktop (stagger 0 domyślnie, nadpisujemy niżej)
+      to = { opacity: 1, y: 0, duration: 1.4, ease: "power2.out", stagger: 0 },
     } = opts;
 
     // Ustaw stany początkowe, aby nie było “przeskoków”
@@ -451,208 +451,224 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // --- 9. PORTFOLIO ---
-function initPortfolioAnimations() {
-  if (isMobile) {
-    initPortfolioPaginationMobile();
-    initPortfolioAnimationsMobile();
-    return;
-  }
-
-  // DESKTOP / TABLET (bez zmian)
-  gsap.utils.toArray("[data-animation='true']").forEach((element) => {
-    const prevElement = element.previousElementSibling;
-    const captionWrapper = element.querySelector(".caption-wrapper");
-    const orangeBg = element.querySelector(".block-bg-orange");
-    const tl = gsap.timeline({
-      scrollTrigger: {
-        trigger: element,
-        start: "top bottom",
-        end: "top 10%",
-        scrub: true,
-      },
-    });
-    tl.fromTo(element, { width: "82%" }, { width: "100%", duration: 1, ease: "none" }, 0);
-    if (prevElement && prevElement.classList.contains("portfolio-block")) {
-      const bgElement = prevElement.querySelector(".bg-black");
-      if (bgElement)
-        tl.fromTo(
-          bgElement,
-          { backgroundColor: "rgba(0,0,0,0)" },
-          { backgroundColor: "rgba(0,0,0,0.75)", duration: 1, ease: "none" },
-          0
-        );
+  function initPortfolioAnimations() {
+    if (isMobile) {
+      initPortfolioPaginationMobile();
+      initPortfolioAnimationsMobile();
+      return;
     }
-    if (captionWrapper)
-      tl.fromTo(captionWrapper, { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 0.4);
-    if (orangeBg)
+
+    // DESKTOP / TABLET (bez zmian)
+    gsap.utils.toArray("[data-animation='true']").forEach((element) => {
+      const prevElement = element.previousElementSibling;
+      const captionWrapper = element.querySelector(".caption-wrapper");
+      const orangeBg = element.querySelector(".block-bg-orange");
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: element,
+          start: "top bottom",
+          end: "top 10%",
+          scrub: true,
+        },
+      });
       tl.fromTo(
-        orangeBg,
-        { scaleX: 0 },
-        { scaleX: 1, transformOrigin: "center center", duration: 0.5, ease: "power2.inOut" },
-        0.5
+        element,
+        { width: "82%" },
+        { width: "100%", duration: 1, ease: "none" },
+        0
       );
-    const textElements = element.querySelectorAll('[data-animation="text"]');
-    textElements.forEach((textElement) => {
-      tl.fromTo(textElement, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "none" }, 0.7);
+      if (prevElement && prevElement.classList.contains("portfolio-block")) {
+        const bgElement = prevElement.querySelector(".bg-black");
+        if (bgElement)
+          tl.fromTo(
+            bgElement,
+            { backgroundColor: "rgba(0,0,0,0)" },
+            { backgroundColor: "rgba(0,0,0,0.75)", duration: 1, ease: "none" },
+            0
+          );
+      }
+      if (captionWrapper)
+        tl.fromTo(
+          captionWrapper,
+          { opacity: 0 },
+          { opacity: 1, duration: 0.5, ease: "power1.out" },
+          0.4
+        );
+      if (orangeBg)
+        tl.fromTo(
+          orangeBg,
+          { scaleX: 0 },
+          {
+            scaleX: 1,
+            transformOrigin: "center center",
+            duration: 0.5,
+            ease: "power2.inOut",
+          },
+          0.5
+        );
+      const textElements = element.querySelectorAll('[data-animation="text"]');
+      textElements.forEach((textElement) => {
+        tl.fromTo(
+          textElement,
+          { opacity: 0 },
+          { opacity: 1, duration: 0.3, ease: "none" },
+          0.7
+        );
+      });
     });
-  });
-}
-
-// --- MOBILE: helper do tween scrollLeft (~0.6s) ---
-function tweenScrollTo(wrapper, targetX, duration = 0.6) {
-  const startX = wrapper.scrollLeft;
-  const delta = targetX - startX;
-  let startTime = null;
-  function step(ts) {
-    if (!startTime) startTime = ts;
-    const t = Math.min((ts - startTime) / (duration * 1000), 1);
-    const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // easeInOutQuad
-    wrapper.scrollLeft = startX + delta * eased;
-    if (t < 1) requestAnimationFrame(step);
   }
-  requestAnimationFrame(step);
-}
 
-// --- MOBILE: paginacja ---
-function initPortfolioPaginationMobile() {
-  const wrapper = document.querySelector(".portfolio-wrapper");
-  const pagContainer = document.querySelector(".mobile-scroll-paggination");
-  if (!wrapper || !pagContainer) return;
+  // --- MOBILE: paginacja (bez custom tween; korzysta z natywnego scroll/snap) ---
+  function initPortfolioPaginationMobile() {
+    const wrapper = document.querySelector(".portfolio-wrapper");
+    const pagContainer = document.querySelector(".mobile-scroll-paggination");
+    if (!wrapper || !pagContainer) return;
 
-  pagContainer.innerHTML = "";
-  const slides = Array.from(wrapper.children).filter((el) => el.nodeType === 1);
-  const dots = slides.map((_, idx) => {
-    const dot = document.createElement("div");
-    dot.classList.add("paggination");
-    if (idx === 0) dot.classList.add("active");
-    dot.dataset.index = idx;
-    pagContainer.appendChild(dot);
-    dot.addEventListener("click", () => {
-      const slide = slides[idx];
+    pagContainer.innerHTML = "";
+    const slides = Array.from(wrapper.children).filter(
+      (el) => el.nodeType === 1
+    );
+    if (!slides.length) return;
+
+    const dots = slides.map((_, idx) => {
+      const dot = document.createElement("div");
+      dot.classList.add("paggination");
+      if (idx === 0) dot.classList.add("active");
+      dot.dataset.index = idx;
+      pagContainer.appendChild(dot);
+      dot.addEventListener("click", () => {
+        const slide = slides[idx];
+        if (!slide) return;
+        slide.scrollIntoView({
+          behavior: "smooth",
+          inline: "start",
+          block: "nearest",
+        });
+      });
+      return dot;
+    });
+
+    const throttleRaf = (fn) => {
+      let ticking = false;
+      return (...args) => {
+        if (!ticking) {
+          requestAnimationFrame(() => {
+            fn(...args);
+            ticking = false;
+          });
+          ticking = true;
+        }
+      };
+    };
+
+    const updateActive = throttleRaf(() => {
+      const viewportCenter = wrapper.scrollLeft + wrapper.clientWidth * 0.5;
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      slides.forEach((slide, idx) => {
+        const center = slide.offsetLeft + slide.offsetWidth * 0.5;
+        const dist = Math.abs(center - viewportCenter);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = idx;
+        }
+      });
+      dots.forEach((dot, i) => {
+        if (i === bestIdx) dot.classList.add("active");
+        else dot.classList.remove("active");
+      });
+    });
+
+    wrapper.addEventListener("scroll", updateActive, { passive: true });
+    window.addEventListener("resize", updateActive);
+    updateActive();
+  }
+
+  // --- MOBILE: animacje treści, odpalane przy zmianie aktywnego slajdu (bez animacji samego scrolla) ---
+  function initPortfolioAnimationsMobile() {
+    const wrapper = document.querySelector(".portfolio-wrapper");
+    if (!wrapper) return;
+    const slides = Array.from(wrapper.children).filter(
+      (el) => el.nodeType === 1
+    );
+    if (!slides.length) return;
+
+    const DUR_CAPTION = 1.8;
+    const DUR_BG = 1.8;
+    const DUR_TEXT = 1.6;
+    const STAGGER_TEXT = 0.4;
+
+    const resetSlide = (slide) => {
       if (!slide) return;
-      tweenScrollTo(wrapper, slide.offsetLeft, 1.6);
-    });
-    return dot;
-  });
-  if (!dots.length) return;
+      const captionWrapper = slide.querySelector(".caption-wrapper");
+      const orangeBg = slide.querySelector(".block-bg-orange");
+      const textElements = slide.querySelectorAll('[data-animation="text"]');
+      if (captionWrapper) gsap.set(captionWrapper, { opacity: 0, y: 10 });
+      if (orangeBg)
+        gsap.set(orangeBg, { scaleX: 0, transformOrigin: "center center" });
+      textElements.forEach((el) => gsap.set(el, { opacity: 0, y: 10 }));
+    };
 
-  const throttleRaf = (fn) => {
-    let ticking = false;
-    return (...args) => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          fn(...args);
-          ticking = false;
-        });
-        ticking = true;
+    const animateSlide = (slide) => {
+      if (!slide) return;
+      const captionWrapper = slide.querySelector(".caption-wrapper");
+      const orangeBg = slide.querySelector(".block-bg-orange");
+      const textElements = slide.querySelectorAll('[data-animation="text"]');
+      const tl = gsap.timeline({ defaults: { ease: "power2.out" } });
+      if (captionWrapper)
+        tl.to(captionWrapper, { opacity: 1, y: 0, duration: DUR_CAPTION }, 0);
+      if (orangeBg) tl.to(orangeBg, { scaleX: 1, duration: DUR_BG }, 0.05);
+      if (textElements.length) {
+        tl.to(
+          textElements,
+          { opacity: 1, y: 0, duration: DUR_TEXT, stagger: STAGGER_TEXT },
+          0.1
+        );
       }
     };
-  };
 
-  const updateActive = throttleRaf(() => {
-    const viewportCenter = wrapper.scrollLeft + wrapper.clientWidth * 0.5;
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    slides.forEach((slide, idx) => {
-      const center = slide.offsetLeft + slide.offsetWidth * 0.5;
-      const dist = Math.abs(center - viewportCenter);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = idx;
-      }
-    });
-    dots.forEach((dot, i) => {
-      if (i === bestIdx) dot.classList.add("active");
-      else dot.classList.remove("active");
-    });
-  });
+    slides.forEach(resetSlide);
+    animateSlide(slides[0]);
+    let activeIdx = 0;
 
-  wrapper.addEventListener("scroll", updateActive, { passive: true });
-  window.addEventListener("resize", updateActive);
-  updateActive();
-}
-
-// --- MOBILE: animacje wejścia treści, odpalane przy zmianie aktywnego slajdu ---
-function initPortfolioAnimationsMobile() {
-  const wrapper = document.querySelector(".portfolio-wrapper");
-  if (!wrapper) return;
-  const slides = Array.from(wrapper.children).filter((el) => el.nodeType === 1);
-  if (!slides.length) return;
-
-  const DUR_CAPTION = 1.8;
-  const DUR_BG = 1.8;
-  const DUR_TEXT = 1.6;
-  const STAGGER_TEXT = 0.4;
-
-  const resetSlide = (slide) => {
-    if (!slide) return;
-    const captionWrapper = slide.querySelector(".caption-wrapper");
-    const orangeBg = slide.querySelector(".block-bg-orange");
-    const textElements = slide.querySelectorAll('[data-animation="text"]');
-    if (captionWrapper) gsap.set(captionWrapper, { opacity: 0, y: 10 });
-    if (orangeBg) gsap.set(orangeBg, { scaleX: 0, transformOrigin: "center center" });
-    textElements.forEach((el) => gsap.set(el, { opacity: 0, y: 10 }));
-  };
-
-  const animateSlide = (slide) => {
-    if (!slide) return;
-    const captionWrapper = slide.querySelector(".caption-wrapper");
-    const orangeBg = slide.querySelector(".block-bg-orange");
-    const textElements = slide.querySelectorAll('[data-animation="text"]');
-    const tl = gsap.timeline({ defaults: { ease: "power2.out" } });
-    if (captionWrapper) tl.to(captionWrapper, { opacity: 1, y: 0, duration: DUR_CAPTION }, 0);
-    if (orangeBg) tl.to(orangeBg, { scaleX: 1, duration: DUR_BG }, 0.05);
-    if (textElements.length) {
-      tl.to(textElements, { opacity: 1, y: 0, duration: DUR_TEXT, stagger: STAGGER_TEXT }, 0.1);
-    }
-  };
-
-  // początkowe reset + animacja pierwszego
-  slides.forEach(resetSlide);
-  animateSlide(slides[0]);
-
-  let activeIdx = 0;
-
-  const throttleRaf = (fn) => {
-    let ticking = false;
-    return (...args) => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          fn(...args);
-          ticking = false;
-        });
-        ticking = true;
-      }
+    const throttleRaf = (fn) => {
+      let ticking = false;
+      return (...args) => {
+        if (!ticking) {
+          requestAnimationFrame(() => {
+            fn(...args);
+            ticking = false;
+          });
+          ticking = true;
+        }
+      };
     };
-  };
 
-  const onScroll = throttleRaf(() => {
-    const viewportCenter = wrapper.scrollLeft + wrapper.clientWidth * 0.5;
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    slides.forEach((slide, idx) => {
-      const center = slide.offsetLeft + slide.offsetWidth * 0.5;
-      const dist = Math.abs(center - viewportCenter);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = idx;
+    const onScroll = throttleRaf(() => {
+      const viewportCenter = wrapper.scrollLeft + wrapper.clientWidth * 0.5;
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      slides.forEach((slide, idx) => {
+        const center = slide.offsetLeft + slide.offsetWidth * 0.5;
+        const dist = Math.abs(center - viewportCenter);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = idx;
+        }
+      });
+      if (bestIdx !== activeIdx) {
+        resetSlide(slides[bestIdx]);
+        animateSlide(slides[bestIdx]);
+        activeIdx = bestIdx;
       }
     });
-    if (bestIdx !== activeIdx) {
-      // zmiana slajdu -> zresetuj nowy i animuj
-      resetSlide(slides[bestIdx]);
-      animateSlide(slides[bestIdx]);
-      activeIdx = bestIdx;
-    }
-  });
 
-  wrapper.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener("resize", onScroll);
-}
+    wrapper.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+  }
 
   // --- 10. SLIDERY ---
   function initSliders() {
-    // Czasy jak na desktopie
     const durMain = 1.2;
     const durDivider = 2.0;
     const durSocial = 0.9;
@@ -696,7 +712,7 @@ function initPortfolioAnimationsMobile() {
             });
           });
         },
-        { rootMargin: "0px 0px -20% 0px", threshold: 0.2 } // ~top 80%
+        { rootMargin: "0px 0px -20% 0px", threshold: 0.2 }
       );
 
       elements.forEach((el) => io.observe(el));
