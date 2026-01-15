@@ -1048,6 +1048,164 @@ document.addEventListener("DOMContentLoaded", function () {
       scrollTrigger: { trigger: form, start: "top 80%", once: true },
     });
   }
+  // --- 16. FORM  ---
+
+  (function () {
+    const MAKE_WEBHOOK =
+      "https://hook.eu2.make.com/fhty7xo0qdsoza15tv4fsivcw9sawy9l";
+
+    function qs(selector) {
+      return document.querySelector(selector);
+    }
+
+    function getContainer(form) {
+      return form.closest(".form-block") || form.parentElement;
+    }
+
+    function findStatusEls(form) {
+      const container = getContainer(form);
+      const done = container ? container.querySelector(".w-form-done") : null;
+      const fail = container ? container.querySelector(".w-form-fail") : null;
+      return { done, fail, container };
+    }
+
+    function showDone(doneEl, failEl) {
+      if (doneEl) doneEl.style.display = "block";
+      if (failEl) failEl.style.display = "none";
+    }
+    function showFail(doneEl, failEl) {
+      if (failEl) failEl.style.display = "block";
+      if (doneEl) doneEl.style.display = "none";
+    }
+
+    function hideFormElement(form) {
+      const container = getContainer(form);
+      if (container) {
+        const emailFormEl = container.querySelector(".email-form");
+        if (emailFormEl) {
+          emailFormEl.style.display = "none";
+          return;
+        }
+      }
+      form.style.display = "none";
+    }
+
+    function submitToIframe(form, onSuccess, onFail) {
+      const iframeName = "hidden_iframe_" + Date.now();
+      const iframe = document.createElement("iframe");
+      iframe.name = iframeName;
+      iframe.style.display = "none";
+      document.body.appendChild(iframe);
+
+      const onLoad = () => {
+        cleanup();
+        onSuccess && onSuccess();
+      };
+      const onTimeout = () => {
+        cleanup();
+        onFail && onFail();
+      };
+
+      function cleanup() {
+        iframe.removeEventListener("load", onLoad);
+        clearTimeout(timeout);
+        setTimeout(() => {
+          try {
+            iframe.parentNode && iframe.parentNode.removeChild(iframe);
+          } catch (e) {}
+        }, 250);
+
+        form.removeAttribute("target");
+      }
+
+      iframe.addEventListener("load", onLoad);
+      const timeout = setTimeout(onTimeout, 7000);
+
+      form.setAttribute("target", iframeName);
+      form.setAttribute("action", MAKE_WEBHOOK);
+      form.setAttribute("method", "POST");
+      form.setAttribute("enctype", "multipart/form-data");
+
+      form.submit();
+    }
+
+    async function handleSubmit(e, form) {
+      e.preventDefault();
+      const submitBtn = form.querySelector('[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+
+      const { done, fail } = findStatusEls(form);
+
+      const fd = new FormData(form);
+
+      form.setAttribute("method", "POST");
+
+      try {
+        const res = await fetch(MAKE_WEBHOOK, {
+          method: "POST",
+          body: fd,
+          headers: {
+            Accept: "application/json",
+          },
+        });
+
+        if (res.ok) {
+          showDone(done, fail);
+          hideFormElement(form);
+          form.reset();
+        } else {
+          console.warn("Make responded with status", res.status);
+          submitToIframe(
+            form,
+            () => {
+              showDone(done, fail);
+              hideFormElement(form);
+              form.reset();
+            },
+            () => {
+              showFail(done, fail);
+            }
+          );
+        }
+      } catch (err) {
+        console.warn("Fetch failed, using iframe fallback:", err);
+        submitToIframe(
+          form,
+          () => {
+            showDone(done, fail);
+            hideFormElement(form);
+            form.reset();
+          },
+          () => {
+            showFail(done, fail);
+          }
+        );
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    }
+
+    function setupForm(selector) {
+      const form = qs(selector);
+      if (!form) return;
+      if (form.__makeHandlerAttached) return;
+      form.__makeHandlerAttached = true;
+
+      form.addEventListener("submit", function (e) {
+        handleSubmit(e, form);
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      setupForm("#email-form");
+      setupForm("#email-form-popup");
+    });
+
+    window.__setupMakeForms = function () {
+      setupForm("#email-form");
+      setupForm("#email-form-popup");
+    };
+  })();
 
   // --- START ---
   initHeroAnimation();
